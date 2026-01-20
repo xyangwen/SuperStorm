@@ -2,14 +2,8 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#000000">
-
-    <title>SuperSky Storm 3D - Mobile App Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SuperSky Storm 3D - v7.3 Boss Fixed & Turbo</title>
     <style>
         /* --- ESTILOS GERAIS (CORE) --- */
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
@@ -18,10 +12,7 @@
             box-sizing: border-box;
             user-select: none;
             -webkit-user-select: none;
-            /* Impede comportamentos padrão de toque (como zoom) exceto onde permitido */
-            touch-action: none; 
-            outline: none;
-            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
         }
 
         body, html {
@@ -29,7 +20,6 @@
             padding: 0;
             width: 100%;
             height: 100%;
-            height: -webkit-fill-available; /* Fix para iOS Safari address bar */
             background-color: #000;
             font-family: 'Orbitron', sans-serif;
             overflow: hidden;
@@ -38,17 +28,13 @@
 
         #game-wrapper {
             position: relative;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             background: #000;
             overflow: hidden;
         }
 
         /* --- CAMADAS (LAYERS) --- */
-        canvas {
-            display: block;
-        }
-
         #bgCanvas {
             position: absolute;
             top: 0; left: 0;
@@ -66,27 +52,21 @@
         .entity-layer {
             position: absolute;
             z-index: 6;
-            width: 90px; 
+            width: 90px;
             height: 90px;
+            /* Transform is handled by JS for precise flipping and centering */
             pointer-events: none;
             transition: top 0.1s linear; 
-            /* Otimização de GPU para mobile */
-            will-change: transform, top, left;
-        }
-
-        /* Ajuste do tamanho do herói em telas muito pequenas */
-        @media (max-width: 400px) {
-            .entity-layer { width: 70px; height: 70px; }
         }
         
         #hero-layer {
-            filter: drop-shadow(0 0 10px rgba(0, 234, 255, 0.6));
+            filter: drop-shadow(0 0 15px rgba(0, 234, 255, 0.6));
         }
 
         #boss-layer {
             z-index: 6;
-            filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.6));
-            display: none; 
+            filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.6));
+            display: none; /* Hidden by default */
         }
         
         .sprite-img {
@@ -98,11 +78,11 @@
         .scanlines {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%); /* Reduzido opacidade para performance */
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
             background-size: 100% 4px;
             pointer-events: none;
             z-index: 20;
-            box-shadow: inset 0 0 50px rgba(0,0,0,0.8);
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.8);
         }
 
         /* --- TELAS E MENUS (UI) --- */
@@ -115,11 +95,9 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(0, 0, 0, 0.9); /* Aumentado contraste para mobile */
-            transition: opacity 0.3s ease;
-            backdrop-filter: blur(5px); /* Reduzido blur para performance */
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
+            background: rgba(0, 0, 0, 0.85);
+            transition: opacity 0.4s ease;
+            backdrop-filter: blur(8px);
         }
 
         .hidden {
@@ -129,44 +107,39 @@
         }
 
         h1 {
-            font-size: clamp(2rem, 8vw, 3.5rem); /* Texto responsivo */
+            font-size: 3rem;
             text-transform: uppercase;
             text-align: center;
             margin: 0;
             background: linear-gradient(to bottom, #fff, #555);
             -webkit-background-clip: text;
             color: transparent;
-            text-shadow: 0 0 15px rgba(0, 234, 255, 0.5);
+            text-shadow: 0 0 20px rgba(0, 234, 255, 0.5);
             animation: pulseText 2s infinite;
-            line-height: 1.1;
         }
 
-        h2 { 
-            color: #00eaff; 
-            text-shadow: 0 0 10px #00eaff; 
-            margin-bottom: 15px; 
-            text-align: center; 
-            font-size: clamp(1.2rem, 5vw, 1.8rem);
-        }
+        h2 { color: #00eaff; text-shadow: 0 0 10px #00eaff; margin-bottom: 20px; text-align: center; }
 
         .btn {
             background: rgba(10, 20, 40, 0.9);
             border: 2px solid #00eaff;
             color: #fff;
-            padding: 15px 10px;
+            padding: 15px 30px;
             font-family: 'Orbitron', sans-serif;
-            font-size: 1rem;
-            margin: 8px auto;
+            font-size: 1.1rem;
+            margin: 10px;
             cursor: pointer;
-            width: 85%;
-            max-width: 350px;
-            clip-path: polygon(5% 0, 100% 0, 100% 70%, 95% 100%, 0 100%, 0 30%);
-            transition: transform 0.1s, background 0.1s;
+            width: 80%;
+            max-width: 300px;
+            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
+            transition: all 0.2s;
             text-transform: uppercase;
             letter-spacing: 2px;
             position: relative;
             overflow: hidden;
             display: block;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .btn:active { transform: scale(0.96); background: #00eaff; color: #000; }
@@ -186,8 +159,7 @@
         /* --- HUD (Interface durante o jogo) --- */
         #hud {
             position: absolute;
-            top: max(10px, env(safe-area-inset-top)); /* Respeita o notch */
-            left: 10px; right: 10px;
+            top: 15px; left: 15px; right: 15px;
             z-index: 30;
             display: flex;
             justify-content: space-between;
@@ -205,12 +177,12 @@
         .hud-box {
             background: rgba(0, 0, 0, 0.6);
             border: 1px solid rgba(0, 234, 255, 0.3);
-            padding: 5px 10px;
+            padding: 8px 15px;
             border-radius: 5px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
+            gap: 10px;
+            box-shadow: 0 0 10px rgba(0, 234, 255, 0.1);
         }
 
         .hud-btn {
@@ -219,9 +191,8 @@
             transition: 0.2s;
             justify-content: center;
             width: 100%;
-            padding: 8px 15px; /* Área de toque maior */
-            font-size: 0.9rem;
-            margin-top: 5px;
+            padding: 5px 15px;
+            font-size: 1rem;
         }
         .hud-btn:active {
             background: #00eaff;
@@ -229,7 +200,7 @@
         }
 
         .life-bar-wrap {
-            width: 100px; height: 10px;
+            width: 120px; height: 12px;
             background: #222; border: 1px solid #555;
             transform: skewX(-20deg);
             overflow: hidden;
@@ -238,16 +209,17 @@
         .life-bar-fill {
             width: 100%; height: 100%;
             background: linear-gradient(90deg, #ff0000, #ff6600);
+            box-shadow: 0 0 10px #ff0000;
             transition: width 0.3s;
         }
 
         /* --- BOSS HUD --- */
         #boss-hud {
             position: absolute;
-            top: max(50px, calc(env(safe-area-inset-top) + 40px));
+            top: 60px;
             left: 50%;
             transform: translateX(-50%);
-            width: 70%;
+            width: 60%;
             z-index: 29;
             display: none;
             flex-direction: column;
@@ -256,15 +228,15 @@
         #boss-name {
             color: #ff0000;
             text-shadow: 0 0 5px #000;
-            font-size: 0.9rem;
+            font-size: 1rem;
             margin-bottom: 2px;
             text-transform: uppercase;
             font-weight: bold;
         }
         #boss-life-bar-wrap {
-            width: 100%; height: 12px;
+            width: 100%; height: 15px;
             background: #222; border: 2px solid #fff;
-            box-shadow: 0 0 10px rgba(255,0,0,0.5);
+            box-shadow: 0 0 15px rgba(255,0,0,0.5);
         }
         #boss-life-fill {
             width: 100%; height: 100%;
@@ -274,10 +246,10 @@
 
         /* --- DIALOGUE UI --- */
         #dialogue-screen {
-            z-index: 45;
+            z-index: 45; /* Below pause, above game */
             background: rgba(0,0,0,0.3);
             justify-content: flex-end;
-            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            padding-bottom: 20px;
         }
         .dialogue-box {
             width: 95%;
@@ -285,48 +257,46 @@
             background: rgba(10, 15, 30, 0.95);
             border: 2px solid #00eaff;
             border-radius: 10px;
-            padding: 10px;
+            padding: 15px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
             box-shadow: 0 0 30px rgba(0, 234, 255, 0.4);
             animation: slideUp 0.3s ease-out;
             position: relative;
-            margin-bottom: 10px;
+            margin-bottom: 50px;
         }
-        @keyframes slideUp { from{transform: translateY(50px); opacity:0;} to{transform: translateY(0); opacity:1;} }
+        @keyframes slideUp { from{transform: translateY(100px); opacity:0;} to{transform: translateY(0); opacity:1;} }
         
         .char-portrait {
-            width: 60px; height: 60px;
+            width: 70px; height: 70px;
             border-radius: 5px;
             border: 2px solid #fff;
             object-fit: cover;
             background: #000;
-            flex-shrink: 0;
         }
         .char-portrait.active { border-color: #ffd700; box-shadow: 0 0 10px #ffd700; }
         
         .dialogue-content {
             flex: 1;
             font-family: 'Rajdhani', sans-serif;
-            overflow: hidden;
         }
         .speaker-name {
             color: #ffd700;
             font-weight: bold;
-            font-size: 1rem;
+            font-size: 1.1rem;
             text-transform: uppercase;
-            margin-bottom: 3px;
+            margin-bottom: 5px;
         }
         .dialogue-text {
             color: #fff;
-            font-size: 0.95rem;
-            line-height: 1.1;
+            font-size: 1rem;
+            line-height: 1.2;
         }
         .tap-continue {
             position: absolute;
             bottom: 5px; right: 10px;
-            font-size: 0.6rem;
+            font-size: 0.7rem;
             color: #aaa;
             animation: blink 1s infinite;
         }
@@ -337,56 +307,61 @@
         .selection-container {
             z-index: 2; 
             text-align: center; 
-            width: 95%; 
+            width: 90%; 
             max-width: 600px;
             height: 90%; 
             display: flex;
             flex-direction: column;
-            padding-top: 10px;
-            padding-bottom: 10px;
+            padding-top: 20px;
+            padding-bottom: 20px;
         }
 
         .hero-grid, .story-scroll {
-            touch-action: pan-y !important; /* Permite rolagem vertical */
-            user-select: none !important;
-            -webkit-overflow-scrolling: touch; /* Rolagem suave no iOS */
+            touch-action: pan-y !important;
+            user-select: text !important;
+            -webkit-user-select: text !important;
         }
 
         .hero-grid {
-            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-            flex: 1; /* Ocupa o espaço disponível */
+            display: flex; gap: 15px; flex-wrap: wrap; justify-content: center;
+            max-height: 55vh; 
             overflow-y: auto; 
             padding: 10px;
             margin: 10px 0;
             border: 1px solid rgba(0, 234, 255, 0.2);
             background: rgba(0, 0, 0, 0.5);
+            scrollbar-color: #00eaff #333;
+            scrollbar-width: thin;
         }
 
         .hero-card {
-            width: 90px; background: rgba(0,0,0,0.8);
+            width: 100px; background: rgba(0,0,0,0.8);
             border: 1px solid #444; border-radius: 8px;
-            padding: 8px; text-align: center;
+            padding: 10px; text-align: center;
             cursor: pointer; position: relative;
             transition: all 0.2s;
         }
         
         .hero-card.selected { border-color: #00eaff; box-shadow: 0 0 15px rgba(0, 234, 255, 0.6); }
-        .hero-card img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; }
+        .hero-card img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; }
         
         #scenario-list-container .hero-card {
-            width: 100px;
-            height: 100px;
+            width: 120px;
+            height: 120px;
             padding: 5px;
         }
         #scenario-list-container .hero-card img {
             width: 100%;
-            height: 60px;
+            height: 70px;
+            border-radius: 5px;
+            object-fit: cover;
+            border: 1px solid #fff;
         }
         
         .story-container {
             display: flex;
             flex-direction: column;
-            height: 85vh;
+            height: 90%;
             width: 90%;
             max-width: 500px;
             background: rgba(10,10,20,0.95);
@@ -398,72 +373,34 @@
         
         .story-scroll {
             flex: 1;
-            padding: 15px;
+            padding: 20px;
             overflow-y: auto;
             text-align: justify;
         }
 
-        /* --- MODAL DE COMPRA --- */
         .modal-content-buy {
             max-width: 400px; 
-            max-height: 90vh;
-            overflow-y: auto;
-            background: rgba(10, 10, 30, 0.98); 
+            height: auto; 
+            background: rgba(10, 10, 30, 0.95); 
             border: 3px solid #ffd700; 
             border-radius: 10px; 
             box-shadow: 0 0 30px rgba(255, 215, 0, 0.5); 
-            padding: 15px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 95%;
+            width: 90%;
         }
 
         .modal-hero-card {
-            width: 120px; 
-            height: 120px; 
-            margin-bottom: 10px; 
+            width: 150px; 
+            height: 150px; 
+            margin-bottom: 15px; 
             border-radius: 10px; 
             overflow: hidden; 
             border: 3px solid #fff; 
             box-shadow: 0 0 20px #00eaff;
             background-color: #333;
-        }
-
-        /* --- SCORE SCREEN --- */
-        #score-screen {
-            background-size: cover;
-            background-position: center;
-            z-index: 60;
-            justify-content: center;
-        }
-        
-        #score-data-box {
-            background: rgba(10, 20, 40, 0.95);
-            border: 2px solid #00eaff;
-            padding: 15px;
-            border-radius: 10px;
-            width: 100%;
-            text-align: left;
-        }
-        
-        .data-line {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px dashed rgba(0, 234, 255, 0.3);
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1rem;
-        }
-        
-        /* --- MEDIA QUERIES PARA TELAS PEQUENAS (APP GEYSER) --- */
-        @media (max-height: 600px) {
-            h1 { font-size: 1.8rem; margin-bottom: 5px; }
-            .btn { padding: 8px; margin: 4px auto; font-size: 0.9rem; }
-            .hero-grid { max-height: 40vh; }
-            #intro-img { max-height: 30vh; }
-            #intro-quote { font-size: 1rem; margin: 10px; }
         }
 
         .floating-currency {
@@ -479,28 +416,121 @@
 
         @keyframes floatUp { from{transform: translateY(0); opacity:1;} to{transform: translateY(-50px); opacity:0;} }
         
+        /* --- TELA DE SCORE --- */
+        #score-screen {
+            background-size: cover;
+            background-position: center;
+            z-index: 60;
+            justify-content: flex-start;
+            padding-top: 50px;
+        }
+        
+        #score-screen h2 {
+            font-size: 2.5rem;
+            color: #ffd700;
+            text-shadow: 0 0 15px #ffd700;
+            margin-bottom: 30px;
+        }
+        
+        #score-data-box {
+            background: rgba(10, 20, 40, 0.9);
+            border: 3px solid #00eaff;
+            box-shadow: 0 0 25px rgba(0, 234, 255, 0.5);
+            padding: 25px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 450px;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .data-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px dashed rgba(0, 234, 255, 0.3);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.2rem;
+        }
+        .data-line:last-child {
+            border-bottom: none;
+        }
+        
+        .data-label {
+            color: #00eaff;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        
+        .data-value {
+            color: #fff;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #record-hero-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid #ffd700;
+            object-fit: cover;
+        }
+
+        /* Glitch Effects */
+        .glitch-effect::before, .glitch-effect::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: inherit; pointer-events: none;
+        }
+        .glitch-effect { position: relative; animation: glitch 2s linear infinite; }
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            20% { transform: translate(-3px, 3px); }
+            40% { transform: translate(-3px, -3px); }
+            60% { transform: translate(3px, 3px); }
+            80% { transform: translate(3px, -3px); }
+            100% { transform: translate(0); }
+        }
+        .glitch-effect::before {
+            left: 2px; text-shadow: -2px 0 #ff00c1; clip-path: inset(60% 0 0 0);
+            animation: glitch-anim 5s infinite linear alternate-reverse;
+        }
+        .glitch-effect::after {
+            left: -2px; text-shadow: -2px 0 #00eaff; clip-path: inset(0 0 60% 0);
+            animation: glitch-anim-2 3s infinite linear alternate-reverse;
+        }
+        @keyframes glitch-anim {
+            0% { clip-path: inset(20% 0 70% 0); }
+            50% { clip-path: inset(50% 0 40% 0); }
+            100% { clip-path: inset(10% 0 80% 0); }
+        }
+        @keyframes glitch-anim-2 {
+            0% { clip-path: inset(30% 0 60% 0); }
+            50% { clip-path: inset(60% 0 30% 0); }
+            100% { clip-path: inset(0 0 90% 0); }
+        }
+        
         /* BATTLE VICTORY TEXT */
         .battle-victory-text {
             position: absolute;
             top: 40%;
             left: 50%;
             transform: translate(-50%, -50%) scale(0);
-            font-size: 3rem;
+            font-size: 4rem;
             color: #ffd700;
             font-weight: 900;
             text-shadow: 0 0 20px gold;
             z-index: 40;
             animation: popIn 0.5s forwards;
             pointer-events: none;
-            width: 100%;
-            text-align: center;
         }
         @keyframes popIn { 0%{transform: translate(-50%,-50%) scale(0);} 80%{transform: translate(-50%,-50%) scale(1.2);} 100%{transform: translate(-50%,-50%) scale(1);} }
 
-        /* Efeitos Glitch simplificados para mobile */
-        .glitch-effect { position: relative; }
-        .glitch-effect::before, .glitch-effect::after { display: none; } /* Desativar pseudo-elementos pesados em low-end se necessário, mas mantido aqui */
-        
     </style>
 </head>
 <body>
@@ -522,14 +552,14 @@
     <div id="hud" class="hidden">
         <div id="hud-left-container"> 
             <div class="hud-box" style="pointer-events: none;">
-                <span style="font-size: 1rem;">❤️</span>
+                <span style="font-size: 1.2rem;">❤️</span>
                 <div class="life-bar-wrap"><div id="life-fill" class="life-bar-fill"></div></div>
             </div>
             <div class="hud-box" style="color: #ffd700; pointer-events: none;">
                 <span>🪙</span> <span id="hud-coins">0</span>
             </div>
             <div id="pause-btn-hud" class="hud-box hud-btn" style="border-color: #fff;">
-                <span>⏸️</span>
+                <span>⏸️ PAUSE</span>
             </div>
         </div>
         
@@ -561,13 +591,13 @@
         <div style="background: rgba(0,0,0,0.7); position:absolute; inset:0;"></div>
         <div class="selection-container" style="justify-content: center;">
             <h1 data-text="SuperSky Storm" class="glitch-effect">SuperSky<br>Storm</h1>
-            <p style="color:#aaa; margin-top:0px; letter-spacing:4px; font-size:0.7rem; margin-bottom: 20px;">APP EDITION v7.3</p>
+            <p style="color:#aaa; margin-top:-10px; letter-spacing:4px; font-size:0.8rem; margin-bottom: 30px;">MOBILE 3D BOSS EDITION v7.3</p>
             
             <button class="btn" onclick="UI.showStory()">📖 História</button>
             <button class="btn" onclick="UI.showScoreScreen()">🏆 Score</button>
             <button class="btn" onclick="UI.showHeroSelect()">🚀 JOGAR</button>
             
-            <div style="margin-top: 20px; color: #ffd700; font-size: 1rem; text-shadow: 0 0 10px gold;">
+            <div style="margin-top: 30px; color: #ffd700; font-size: 1.2rem; text-shadow: 0 0 10px gold;">
                 🪙 Banco: <span id="menu-total-coins">0</span> | 💎 <span id="menu-total-gems">0</span>
             </div>
         </div>
@@ -579,30 +609,30 @@
             <h2 data-text="DADOS DO PILOTO" class="glitch-effect">DADOS DO PILOTO</h2>
             <div id="score-data-box">
                 <div class="data-line">
-                    <span class="data-label">🪙 Moedas:</span>
+                    <span class="data-label">🪙 Moedas Acumuladas:</span>
                     <span class="data-value" id="score-total-coins">0</span>
                 </div>
                 <div class="data-line" style="border-bottom: 3px solid #ffd700;">
-                    <span class="data-label">🏆 RECORDE:</span>
-                    <span class="data-value" style="color: #ffd700; font-size: 1.2rem;" id="score-high-score">0m</span>
+                    <span class="data-label">🏆 RECORDE MÁXIMO:</span>
+                    <span class="data-value" style="color: #ffd700; font-size: 1.5rem;" id="score-high-score">0m</span>
                 </div>
                 <div class="data-line">
-                    <span class="data-label">Herói:</span>
+                    <span class="data-label">Herói do Recorde:</span>
                     <span class="data-value">
-                        <img id="record-hero-icon" src="" alt="Hero Icon" style="width:30px;height:30px;border-radius:50%;">
-                        <span id="score-record-hero-name" style="font-size:0.9rem;">N/A</span>
+                        <img id="record-hero-icon" src="" alt="Hero Icon">
+                        <span id="score-record-hero-name">N/A</span>
                     </span>
                 </div>
                 <div class="data-line">
-                    <span class="data-label">Último (DIST):</span>
+                    <span class="data-label">Última Partida (DIST):</span>
                     <span class="data-value" id="score-last-score">0m</span>
                 </div>
                 <div class="data-line">
-                    <span class="data-label">Último (COINS):</span>
+                    <span class="data-label">Última Partida (COINS):</span>
                     <span class="data-value" id="score-last-coins">0 🪙</span>
                 </div>
             </div>
-            <button class="btn" onclick="UI.showMenu()" style="margin-top: 20px; background:#333; border-color:#666;">VOLTAR</button>
+            <button class="btn" onclick="UI.showMenu()" style="margin-top: 30px; background:#333; border-color:#666;">VOLTAR AO MENU</button>
         </div>
     </div>
     
@@ -611,19 +641,19 @@
             <div class="story-scroll">
                 <h2>O Chamado</h2>
                 <img src="https://fightersgeneration.com/characters4/superman-ending1.png" style="width:100%; border-radius:5px; border:1px solid #555; margin-bottom: 15px;">
-                <p style="font-family:'Rajdhani',sans-serif; font-size:1rem; line-height:1.4; color:#ddd;">
+                <p style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; line-height:1.5; color:#ddd;">
                     "Há uma ameaça jamais vista. A anomalia está nos céus. Somente heróis capazes de voar podem ultrapassar a tempestade."
                 </p>
-                <div style="background:#1a1a2e; padding:10px; border-left:4px solid #00eaff; margin-top:15px; border-radius: 5px;">
-                    <strong style="color: #00eaff; font-size: 1rem;">🎮 COMO JOGAR:</strong><br><br>
-                    1. <strong>Arraste o dedo</strong> para mover.<br>
-                    2. Desvie e colete moedas 🪙.<br>
-                    3. <strong>A CADA 500M:</strong> Chefe!<br>
-                    4. No chefe: <strong>TOQUE RÁPIDO</strong> para atirar.
+                <div style="background:#1a1a2e; padding:15px; border-left:4px solid #00eaff; margin-top:20px; border-radius: 5px;">
+                    <strong style="color: #00eaff; font-size: 1.2rem;">🎮 COMO JOGAR:</strong><br><br>
+                    1. <strong>Deslize o dedo</strong> para mover para CIMA/BAIXO.<br>
+                    2. Desvie dos canos e colete moedas 🪙.<br>
+                    3. <strong>A CADA 500M:</strong> Enfrente um Chefe!<br>
+                    4. No modo chefe: <strong>TOQUE REPETIDAMENTE</strong> na tela para atirar poderes. Vença para restaurar a vida e ganhar 50 moedas!
                 </div>
             </div>
-            <div class="story-footer" style="padding:10px;">
-                <button class="btn" onclick="UI.showMenu()" style="width:100%; margin:0;">VOLTAR</button>
+            <div class="story-footer">
+                <button class="btn" onclick="UI.showMenu()" style="width:100%; margin:0;">VOLTAR AO MENU</button>
             </div>
         </div>
     </div>
@@ -634,7 +664,7 @@
             <h2>Escolher Herói</h2>
             <div class="hero-grid" id="hero-list-container">
                 </div>
-            <div id="hero-details" style="height: 40px; color: #00eaff; margin: 5px 0; font-style: italic; text-align: center; font-size: 0.9rem;"></div>
+            <div id="hero-details" style="height: 50px; color: #00eaff; margin: 10px 0; font-style: italic; text-align: center;"></div>
             <div style="width: 100%; text-align: center;">
                 <button class="btn" onclick="UI.showSkinSelect(Game.selectedBaseId)">SELECIONAR SKINS</button>
                 <button class="btn" onclick="UI.showMenu()" style="background:#333; border-color:#666;">VOLTAR</button>
@@ -645,32 +675,30 @@
     <div id="skin-select-screen" class="screen hidden" style="background-image: url('https://w0.peakpx.com/wallpaper/593/223/HD-wallpaper-superman-vs-goku-dragoonball-goku-marvel-superman.jpg'); background-size: cover; background-position: center;">
         <div style="background: rgba(0,0,0,0.7); position:absolute; inset:0;"></div>
         <div class="selection-container">
-            <h2 id="skin-select-title">Skins</h2>
-            <div class="hero-grid" id="skin-list-container">
+            <h2 id="skin-select-title">Skins de Herói</h2>
+            <div class="hero-grid" id="skin-list-container" style="max-height: 50vh;">
                 </div>
-            <div id="skin-details" style="height: 40px; color: #00eaff; margin: 5px 0; font-style: italic; text-align: center; font-size: 0.9rem;"></div>
+            <div id="skin-details" style="height: 50px; color: #00eaff; margin: 10px 0; font-style: italic; text-align: center;"></div>
             <div style="width: 100%; text-align: center;">
                 <button class="btn" onclick="Game.preStartIntro()">INICIAR MISSÃO >></button>
-                <button class="btn" onclick="UI.showHeroSelect()" style="background:#333; border-color:#666;">VOLTAR</button>
+                <button class="btn" onclick="UI.showHeroSelect()" style="background:#333; border-color:#666;">VOLTAR PARA HERÓIS</button>
             </div>
         </div>
     </div>
 
     <div id="intro-screen" class="screen hidden" style="background:#000;">
-        <div class="selection-container">
-            <h2 id="intro-name" style="font-size:1.8rem; margin-top: 10px;">HERÓI</h2>
-            <img id="intro-img" src="" style="width: auto; max-width:90%; max-height:35vh; border:2px solid #00eaff; box-shadow:0 0 20px #00eaff; border-radius: 10px; display: block; margin: 0 auto;">
-            <p id="intro-quote" style="color:#fff; font-style:italic; font-family:'Rajdhani'; font-size:1.2rem; margin:20px; text-align:center;">"..."</p>
-            <button class="btn" onclick="UI.showScenarioSelect()">CONTINUAR >></button>
-        </div>
+        <h2 id="intro-name" style="font-size:2rem; margin-top: 0;">HERÓI</h2>
+        <img id="intro-img" src="" style="max-width:85%; max-height:40vh; border:2px solid #00eaff; box-shadow:0 0 20px #00eaff; border-radius: 10px;">
+        <p id="intro-quote" style="color:#fff; font-style:italic; font-family:'Rajdhani'; font-size:1.4rem; margin:20px; text-align:center; padding: 0 20px;">"..."</p>
+        <button class="btn" onclick="UI.showScenarioSelect()">INICIAR MISSÃO >></button>
     </div>
 
     <div id="scenario-select-screen" class="screen hidden" style="background-image: url('https://w0.peakpx.com/wallpaper/593/223/HD-wallpaper-superman-vs-goku-dragoonball-goku-marvel-superman.jpg'); background-size: cover; background-position: center;">
         <div style="background: rgba(0,0,0,0.7); position:absolute; inset:0;"></div>
         <div class="selection-container">
-            <h2>Cenário</h2>
-            <p style="color:#ddd; margin: 5px 0;">Escolha o mapa!</p>
-            <div class="hero-grid" id="scenario-list-container"></div>
+            <h2>Selecione o Cenário</h2>
+            <p style="color:#ddd;">Escolha o mapa onde deseja iniciar a missão!</p>
+            <div class="hero-grid" id="scenario-list-container" style="max-height: 50vh;"></div>
             <div style="width: 100%; text-align: center;">
                 <button class="btn" onclick="Game.selectScenarioAndStart()">INICIAR PARTIDA</button>
                 <button class="btn" onclick="UI.showHeroSelect()" style="background:#333; border-color:#666;">VOLTAR</button>
@@ -683,35 +711,35 @@
             <div id="buy-hero-card" class="modal-hero-card">
                 <img id="buy-hero-img" src="" style="width: 100%; height: 100%; object-fit: cover;">
             </div>
-            <h2 id="buy-hero-name" style="margin-top: 5px; color: #ffd700; font-size: 1.2rem;">Comprar?</h2>
-            <p id="buy-hero-cost" style="color:#ffd700; font-size: 1.5rem; font-weight: bold; margin-bottom: 10px;"></p>
-            <p style="color:#ddd; font-family: 'Rajdhani', sans-serif;">Seu banco: <span id="current-player-coins" style="font-weight: bold; color: white;">0</span> 🪙</p>
-            <button class="btn" id="confirm-buy-btn" onclick="Game.buyHero(true)" style="background: #0088ff; border-color: #00eaff; width:100%;">
-                COMPRAR
+            <h2 id="buy-hero-name" style="margin-top: 0; color: #ffd700;">Comprar Herói</h2>
+            <p id="buy-hero-cost" style="color:#ffd700; font-size: 1.8rem; font-weight: bold; margin-bottom: 20px;"></p>
+            <p style="color:#ddd; font-family: 'Rajdhani', sans-serif;">Seu banco atual: <span id="current-player-coins" style="font-weight: bold; color: white;">0</span> 🪙</p>
+            <button class="btn" id="confirm-buy-btn" onclick="Game.buyHero(true)" style="background: #0088ff; border-color: #00eaff; max-width: 250px;">
+                CONFIRMAR COMPRA
             </button>
-            <button class="btn" onclick="Game.buyHero(false)" style="background: #555; border-color: #999; width:100%;">
-                CANCELAR
+            <button class="btn" onclick="Game.buyHero(false)" style="background: #555; border-color: #999; max-width: 250px;">
+                NÃO COMPRAR (VOLTAR)
             </button>
         </div>
     </div>
 
     <div id="pause-screen" class="screen hidden">
-        <h1 style="color: #fff; text-shadow: 0 0 20px white; margin-bottom: 20px;">PAUSADO</h1>
-        <div style="background:rgba(0, 20, 40, 0.9); padding:20px; border-radius:15px; text-align:center; min-width:250px; border: 1px solid #00eaff; box-shadow: 0 0 20px rgba(0,234,255,0.3);">
-            <p style="color: #00eaff; margin-bottom: 20px; letter-spacing: 2px;">JOGO PARADO</p>
+        <h1 style="color: #fff; text-shadow: 0 0 30px white; margin-bottom: 20px;">PAUSADO</h1>
+        <div style="background:rgba(0, 20, 40, 0.9); padding:30px; border-radius:15px; text-align:center; min-width:280px; border: 1px solid #00eaff; box-shadow: 0 0 20px rgba(0,234,255,0.3);">
+            <p style="color: #00eaff; margin-bottom: 20px; letter-spacing: 2px;">JOGO INTERROMPIDO</p>
             <button class="btn" onclick="Game.togglePause()">▶ Continuar</button>
-            <button class="btn" onclick="Game.quitToMenu()" style="border-color:#555; background: #222;">Sair</button>
+            <button class="btn" onclick="Game.quitToMenu()" style="border-color:#555; background: #222;">Menu Principal</button>
         </div>
     </div>
 
     <div id="game-over-screen" class="screen hidden">
-        <h1 style="color: #ff3333; text-shadow: 0 0 20px red; margin-bottom: 20px;">FIM DE JOGO</h1>
-        <div style="background:rgba(20, 0, 0, 0.95); padding:20px; border-radius:15px; text-align:center; width:90%; max-width:300px; border: 1px solid #ff3333;">
-            <h3 style="font-size: 1.4rem; margin: 10px 0;">Score: <span id="go-score" style="color: #fff;">0</span>m</h3>
-            <p style="font-size: 1.1rem;">Coletou: <span id="go-coins" style="color:#ffd700; font-weight: bold;">0</span> 🪙</p>
-            <hr style="border-color:#555; margin: 15px 0;">
+        <h1 style="color: #ff3333; text-shadow: 0 0 30px red; margin-bottom: 20px;">FIM DE JOGO</h1>
+        <div style="background:rgba(20, 0, 0, 0.9); padding:30px; border-radius:15px; text-align:center; min-width:280px; border: 1px solid #ff3333;">
+            <h3 style="font-size: 1.5rem; margin: 10px 0;">Score: <span id="go-score" style="color: #fff;">0</span>m</h3>
+            <p style="font-size: 1.2rem;">Coletou: <span id="go-coins" style="color:#ffd700; font-weight: bold;">0</span> 🪙</p>
+            <hr style="border-color:#555; margin: 20px 0;">
             <button class="btn" onclick="Game.selectScenarioAndStart()">Jogar Novamente</button>
-            <button class="btn" onclick="UI.showMenu()" style="border-color:#fff; background: #333;">Menu</button>
+            <button class="btn" onclick="UI.showMenu()" style="border-color:#fff; background: #333;">Menu Principal</button>
         </div>
     </div>
 </div>
@@ -719,20 +747,22 @@
 <script>
 /**
  * SUPERSKY STORM - GAME ENGINE
- * APPGEYSER OPTIMIZED EDITION
+ * v7.3 - BOSS VISIBILITY FIXED & TURBO MODE
+ * * Fix: Removed 'hidden' class from boss layer on spawn to ensure visibility.
+ * * Update: Increased base game speed and acceleration multiplier.
  */
 
 // --- 1. DADOS E ASSETS ---
 
 const SCENARIOS = [
-    { id: 'metropolis', name: 'Metrópolis', url: 'https://static.dc.com/sites/default/files/imce/2020/07-JUL/DCU_Rewards_Metropolis_mobile_5f2b1a821856b1.02231681.jpg' },
+    { id: 'metropolis', name: 'Metrópolis (Clássico)', url: 'https://static.dc.com/sites/default/files/imce/2020/07-JUL/DCU_Rewards_Metropolis_mobile_5f2b1a821856b1.02231681.jpg' },
     { id: 'dark', name: 'Terra Sombria', url: 'https://i.pinimg.com/736x/6f/4d/73/6f4d73d1afc0702a6e9d31f36d1628bc.jpg' },
-    { id: 'xmen', name: 'Mansão X', url: 'https://i.pinimg.com/736x/97/50/b2/9750b2f6780d3913b5d32e63f55f80e9.jpg' },
+    { id: 'xmen', name: 'Mansão dos X-men', url: 'https://i.pinimg.com/736x/97/50/b2/9750b2f6780d3913b5d32e63f55f80e9.jpg' },
     { id: 'stark', name: 'Indústrias Stark', url: 'https://i.pinimg.com/736x/c8/02/b5/c802b556cc109644eca6abb38ae956b7.jpg' },
-    { id: 'avengers', name: 'Avengers Tower', url: 'https://i.pinimg.com/736x/b8/83/79/b88379c2ae51b92ecaa14565df5ee5f8.jpg' },
-    { id: 'fantastic', name: 'Edifício Baxter', url: 'https://ovicio.com.br/wp-content/uploads/2021/11/20211123-20211123_155828.jpg' },
+    { id: 'avengers', name: 'Torre dos Vingadores', url: 'https://i.pinimg.com/736x/b8/83/79/b88379c2ae51b92ecaa14565df5ee5f8.jpg' },
+    { id: 'fantastic', name: 'Quarteto Fantástico', url: 'https://ovicio.com.br/wp-content/uploads/2021/11/20211123-20211123_155828.jpg' },
     { id: 'gotham', name: 'Gotham City', url: 'https://wallpapers.com/images/hd/gotham-city-s-majestic-night-skyline-y6pgq0uhj8alz8ee.jpg' }, 
-    { id: 'arkham', name: 'Arkham', url: 'https://i.pinimg.com/474x/83/3f/f7/833ff7c1507e0e071cb1eba621d250b0.jpg' }, 
+    { id: 'arkham', name: 'Arkham City', url: 'https://i.pinimg.com/474x/83/3f/f7/833ff7c1507e0e071cb1eba621d250b0.jpg' }, 
 ];
 
 const HEROES_SKINS = [
@@ -918,11 +948,11 @@ const UI = {
             card.style.opacity = anySkinUnlocked ? '1' : '0.5';
             
             const firstLockedSkin = allSkins.find(s => !PlayerData.unlocked.includes(s.id) && s.price > 0);
-            const priceText = firstLockedSkin ? `<div style="color:#ffd700; font-size:0.7rem;">🔒 Skin</div>` : '';
+            const priceText = firstLockedSkin ? `<div style="color:#ffd700; font-size:0.8rem;">🔒 Skin Disp.</div>` : '';
 
             card.innerHTML = `
                 <img src="${hero.icon}">
-                <div style="font-size:0.7rem; margin-top:5px; color:#fff; white-space:nowrap; overflow:hidden;">${hero.name.replace(/\s*\([^)]+\)/, '')}</div>
+                <div style="font-size:0.8rem; margin-top:5px; color:#fff;">${hero.name.replace(/\s*\([^)]+\)/, '')}</div>
                 ${priceText}
             `;
             
@@ -935,7 +965,7 @@ const UI = {
         
         const details = document.getElementById('hero-details');
         const selectedSkin = Game.getHeroData(Game.selectedSkinId);
-        details.innerHTML = `Herói: ${selectedSkin.name}`;
+        details.innerHTML = `Herói Atual: ${selectedSkin.name}`;
     },
     
     showSkinSelect: function(baseId) {
@@ -944,7 +974,7 @@ const UI = {
         const skins = HEROES_SKINS.filter(s => s.baseId === baseId);
         const baseHero = skins.find(s => s.isBase) || skins[0];
         
-        document.getElementById('skin-select-title').innerText = `Skins: ${baseHero.name.replace(/\s*\([^)]+\)/, '')}`;
+        document.getElementById('skin-select-title').innerText = `Skins de ${baseHero.name.replace(/\s*\([^)]+\)/, '')}`;
         
         const container = document.getElementById('skin-list-container');
         container.innerHTML = '';
@@ -959,8 +989,8 @@ const UI = {
             
             card.innerHTML = `
                 <img src="${skin.icon}">
-                <div style="font-size:0.7rem; margin-top:5px; color:#fff; white-space:nowrap; overflow:hidden;">${skin.name.split('(').pop().replace(')', '').trim()}</div>
-                ${!isUnlocked && skin.price > 0 ? `<div style="color:#ffd700; font-size:0.7rem;">🔒 ${skin.price}</div>` : ''}
+                <div style="font-size:0.8rem; margin-top:5px; color:#fff;">${skin.name.split('(').pop().replace(')', '').trim()}</div>
+                ${!isUnlocked && skin.price > 0 ? `<div style="color:#ffd700; font-size:0.8rem;">🔒 ${skin.price}</div>` : ''}
             `;
             
             card.onclick = () => { AudioSys.sfxClick(); Game.selectSkin(skin.id); };
@@ -970,7 +1000,7 @@ const UI = {
         document.getElementById('skin-select-screen').classList.remove('hidden');
         const details = document.getElementById('skin-details');
         const currentSkin = Game.getHeroData(Game.selectedSkinId);
-        details.innerHTML = `Selecionado: ${currentSkin.name}`;
+        details.innerHTML = `Skin Selecionada: ${currentSkin.name}`;
     },
 
     showScenarioSelect: function() {
@@ -981,12 +1011,12 @@ const UI = {
         SCENARIOS.forEach(scenario => {
             const card = document.createElement('div');
             card.className = `hero-card ${Game.selectedScenarioId === scenario.id ? 'selected' : ''}`;
-            card.style.width = '100px'; 
-            card.style.height = '100px';
+            card.style.width = '120px'; 
+            card.style.height = '120px';
             
             card.innerHTML = `
-                <img src="${scenario.url}" style="width: 100%; height: 60px; border-radius: 5px; object-fit: cover; border: 1px solid #fff;">
-                <div style="font-size:0.7rem; margin-top:5px; color:#fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${scenario.name}</div>
+                <img src="${scenario.url}" style="width: 100%; height: 70px; border-radius: 5px; object-fit: cover; border: 1px solid #fff;">
+                <div style="font-size:0.8rem; margin-top:5px; color:#fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${scenario.name}</div>
             `;
             
             card.onclick = () => { AudioSys.sfxClick(); Game.selectScenario(scenario.id); };
@@ -1006,7 +1036,7 @@ const UI = {
         if (PlayerData.coins < hero.price) {
             confirmBtn.disabled = true;
             confirmBtn.style.opacity = 0.5;
-            confirmBtn.innerText = "SEM SALDO";
+            confirmBtn.innerText = "MOEDAS INSUFICIENTES";
         } else {
             confirmBtn.disabled = false;
             confirmBtn.style.opacity = 1;
@@ -1032,8 +1062,8 @@ const UI = {
         const dSpeaker = document.getElementById('d-speaker');
         const dText = document.getElementById('d-text');
 
-        dLeft.src = eImg; 
-        dRight.src = pImg; 
+        dLeft.src = eImg; // Enemy on Left (visual choice for arrival)
+        dRight.src = pImg; // Player on Right
 
         dScreen.classList.remove('hidden');
         
@@ -1099,7 +1129,7 @@ const Game = {
     selectedScenarioId: SCENARIOS[0].id,
     heroData: null,
     
-    state: 'MENU', 
+    state: 'MENU', // MENU, PLAYING, PAUSED, GAMEOVER, BOSS_DIALOGUE, BOSS_BATTLE, BOSS_VICTORY
     hero: { x: 0, y: 0, targetY: 0, width: 60, height: 60, life: 100 },
     obstacles: [],
     items: [],
@@ -1115,7 +1145,7 @@ const Game = {
         shootTimer: 0 
     },
     
-    gameSpeed: 8, 
+    gameSpeed: 8, // AUMENTADO (De 5 para 8)
     score: 0,
     nextBossScore: 500,
     coinCount: 0,
@@ -1131,8 +1161,8 @@ const Game = {
     init: function() {
         AudioSys.init(); 
 
-        this.ctx = this.canvas.getContext('2d', { alpha: true });
-        this.bgCtx = this.bgCanvas.getContext('2d', { alpha: false }); // Otimização para bg opaco
+        this.ctx = this.canvas.getContext('2d');
+        this.bgCtx = this.bgCanvas.getContext('2d');
         this.resize();
         window.addEventListener('resize', () => this.resize());
         
@@ -1145,7 +1175,7 @@ const Game = {
         
         const handleTap = (e) => {
             if (this.state === 'PLAYING' || this.state === 'BOSS_BATTLE') { 
-                // e.preventDefault(); // Comentado para permitir botões de pause funcionarem melhor
+                e.preventDefault(); 
             }
             
             // Movement update
@@ -1158,9 +1188,7 @@ const Game = {
         };
 
         window.addEventListener('touchmove', (e) => {
-            if (this.state === 'PLAYING' || this.state === 'BOSS_BATTLE') {
-                e.preventDefault(); // Impede scroll do browser enquanto joga
-            }
+            if (this.state === 'PLAYING' || this.state === 'BOSS_BATTLE') e.preventDefault();
             handleMove(e.touches[0].clientY);
         }, {passive: false});
 
@@ -1192,7 +1220,6 @@ const Game = {
     },
     
     resize: function() {
-        // Ajuste fino para mobile: garante que o canvas pegue o tamanho interno da janela
         this.canvas.width = this.bgCanvas.width = window.innerWidth;
         this.canvas.height = this.bgCanvas.height = window.innerHeight;
         this.hero.x = this.canvas.width * 0.15;
@@ -1208,7 +1235,7 @@ const Game = {
             const unlockedSkin = skins.find(s => PlayerData.unlocked.includes(s.id));
             this.selectSkin(unlockedSkin ? unlockedSkin.id : skins[0].id);
         }
-        UI.showHeroSelect(); 
+        UI.showHeroSelect(); // Back to hero select, the button should now go to skin select
     },
     
     selectSkin: function(id) {
@@ -1221,7 +1248,7 @@ const Game = {
         this.selectedSkinId = id;
         this.selectedBaseId = skin.baseId;
         const details = document.getElementById('skin-details');
-        details.innerHTML = `Selecionado: ${skin.name}`;
+        details.innerHTML = `Skin Selecionada: ${skin.name}`;
         if (document.getElementById('skin-select-screen').classList.contains('hidden') === false) {
              UI.showSkinSelect(skin.baseId);
         }
@@ -1243,7 +1270,7 @@ const Game = {
             this.heroToBuy = null;
             UI.hideBuyHeroModal();
         } else {
-            alert(`Moedas insuficientes! Falta ${skin.price - PlayerData.coins}.`);
+            alert(`Moedas insuficientes! Você precisa de ${skin.price} moedas.`);
         }
     },
 
@@ -1284,7 +1311,7 @@ const Game = {
         this.score = 0;
         this.nextBossScore = 500;
         this.coinCount = 0;
-        this.gameSpeed = 8; 
+        this.gameSpeed = 8; // Resetando para a nova velocidade base
         this.hero.life = 100;
         this.hero.y = this.canvas.height / 2;
         this.hero.targetY = this.canvas.height / 2;
@@ -1341,10 +1368,10 @@ const Game = {
     // --- BOSS BATTLE SYSTEM ---
     
     initBossEvent: function() {
-        if (this.nextBossScore > 10000) return; 
+        if (this.nextBossScore > 10000) return; // Prevent boss spawning after limit
 
         this.state = 'BOSS_DIALOGUE';
-        this.obstacles = []; 
+        this.obstacles = []; // Clear obstacles
         this.items = [];
         
         // Pick random opponent
@@ -1354,7 +1381,7 @@ const Game = {
         this.boss.data = randomOpp;
         this.boss.life = 100;
         this.boss.maxLife = 100;
-        this.boss.x = this.canvas.width * 0.85; 
+        this.boss.x = this.canvas.width * 0.85; // Fixed X position for boss
         this.boss.y = this.canvas.height / 2;
         this.boss.targetY = this.canvas.height / 2;
         this.boss.active = true;
@@ -1362,10 +1389,12 @@ const Game = {
 
         // Setup Boss Visual
         const bossLayer = document.getElementById('boss-layer');
+        // FIX: REMOVE HIDDEN CLASS EXPLICITLY TO OVERRIDE !important
         bossLayer.classList.remove('hidden'); 
         bossLayer.style.display = 'block';
         document.getElementById('boss-sprite').src = randomOpp.gameGif;
         
+        // --- ORIENTATION (Will be updated in bossAI loop for consistency) ---
         const scaleDirection = randomOpp.flip ? 1 : -1; 
         bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDirection})`; 
 
@@ -1412,20 +1441,26 @@ const Game = {
         // Simple AI: Move towards player Y, slightly delayed
         this.boss.y += (this.hero.y - this.boss.y) * 0.05;
         
+        // Bounds
         if(this.boss.y < 50) this.boss.y = 50;
         if(this.boss.y > this.canvas.height - 50) this.boss.y = this.canvas.height - 50;
         
+        // Render Position
         const bossLayer = document.getElementById('boss-layer');
         bossLayer.style.top = this.boss.y + 'px';
         bossLayer.style.left = this.boss.x + 'px';
         
+        // --- FIX VISIBILITY/ANIMATION: Apply correct centering and scaling on every frame ---
         if (this.boss.data) {
              const scaleDirection = this.boss.data.flip ? 1 : -1; 
+             // Apply centering (-50%, -50%) and orientation (scaleX)
              bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDirection})`;
         }
+        // --- END FIX ---
 
+        // Shoot
         this.boss.shootTimer++;
-        if(this.boss.shootTimer > 40) { 
+        if(this.boss.shootTimer > 40) { // Shoot interval
              this.shootProjectile('boss');
              this.boss.shootTimer = 0;
         }
@@ -1436,6 +1471,7 @@ const Game = {
             let p = this.projectiles[i];
             p.x += p.vx;
             
+            // Remove offscreen
             if(p.x < 0 || p.x > this.canvas.width) {
                 this.projectiles.splice(i,1);
                 continue;
@@ -1463,7 +1499,7 @@ const Game = {
                     
                     if(this.boss.life <= 0) {
                         this.bossVictory();
-                        return; 
+                        return; // Exit loop early to prevent further processing
                     }
                     continue;
                 }
@@ -1493,11 +1529,16 @@ const Game = {
             vicText.remove();
             this.state = 'PLAYING';
             
+            // --- FIX PROGRESSION: Increment next boss score up to 10000M ---
             if (this.nextBossScore < 10000) {
                  this.nextBossScore += 500;
+                 console.log(`Próximo chefe agendado para: ${this.nextBossScore}m`);
             } else {
+                 // Após 10000m, sem mais chefes (o jogo continua)
                  this.nextBossScore = Infinity; 
+                 console.log("Limite de chefes (10000m) atingido.");
             }
+            // --- END FIX ---
         }, 2500);
     },
 
@@ -1673,7 +1714,7 @@ const Game = {
         if(this.state === 'PLAYING') {
             this.bgOffset -= this.gameSpeed * 0.2;
         } else if (this.state === 'BOSS_BATTLE') {
-            this.bgOffset -= 10; 
+            this.bgOffset -= 10; // Fast background for intense battle feel
         } else {
              this.bgOffset -= 0.5;
         }
@@ -1781,8 +1822,7 @@ const Game = {
         this.hero.life -= amount;
         AudioSys.sfxHit();
         const wrapper = document.getElementById('game-wrapper');
-        // Reduzido o shake para mobile
-        wrapper.style.transform = `translate(${Math.random()*6-3}px, ${Math.random()*6-3}px)`;
+        wrapper.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
         setTimeout(() => wrapper.style.transform = 'none', 50);
         if (this.hero.life <= 0) this.gameOver();
     },
@@ -1815,5 +1855,177 @@ const Game = {
 
 window.onload = () => Game.init();
 </script>
+<style>
+    /* Estilos exclusivos do Preloader */
+    #preloader-overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 99999; /* Fica acima de tudo */
+        background-color: #000;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-family: 'Orbitron', sans-serif;
+        transition: opacity 0.5s ease-out;
+    }
+
+    .loader-title {
+        color: #fff;
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        animation: pulseText 1.5s infinite;
+        text-shadow: 0 0 10px #00eaff;
+        text-align: center;
+    }
+
+    .loader-bar-container {
+        width: 80%;
+        max-width: 400px;
+        height: 20px;
+        background: #111;
+        border: 2px solid #00eaff;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 0 20px rgba(0, 234, 255, 0.3);
+    }
+
+    .loader-bar-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #0055ff, #00eaff);
+        transition: width 0.2s linear;
+        box-shadow: 0 0 15px #00eaff;
+    }
+
+    .loader-text {
+        color: #00eaff;
+        margin-top: 10px;
+        font-size: 0.9rem;
+        font-family: 'Rajdhani', sans-serif;
+    }
+
+    .loader-warn {
+        position: absolute;
+        bottom: 20px;
+        color: #555;
+        font-size: 0.7rem;
+        text-align: center;
+        width: 100%;
+    }
+</style>
+
+<div id="preloader-overlay">
+    <div class="loader-title">Carregando Recursos...</div>
+    <div class="loader-bar-container">
+        <div id="loader-fill" class="loader-bar-fill"></div>
+    </div>
+    <div id="loader-status" class="loader-text">0%</div>
+    <div class="loader-warn">Aguarde o carregamento dos GIFs de alta definição.</div>
+</div>
+
+<script>
+    /**
+     * PRELOADER LOGIC v1.0
+     * Garante que GIFs e Imagens pesadas estejam no cache antes do jogo iniciar.
+     */
+    const Preloader = {
+        overlay: document.getElementById('preloader-overlay'),
+        bar: document.getElementById('loader-fill'),
+        txt: document.getElementById('loader-status'),
+        assets: [],
+        total: 0,
+        loaded: 0,
+
+        // Coleta todas as URLs das configurações do jogo
+        collectAssets: function() {
+            // 1. Cenários
+            if (typeof SCENARIOS !== 'undefined') {
+                SCENARIOS.forEach(s => this.addUrl(s.url));
+            }
+            // 2. Skins e Heróis (Icons, Intros, GameGifs)
+            if (typeof HEROES_SKINS !== 'undefined') {
+                HEROES_SKINS.forEach(h => {
+                    this.addUrl(h.icon);
+                    this.addUrl(h.introGif);
+                    this.addUrl(h.gameGif);
+                });
+            }
+            // 3. Imagens de UI importantes (Hardcoded para garantir)
+            this.addUrl('https://wallpapers.com/images/hd/dark-superman-superhero-iphone-m2jk0xvpaxiyoyua.jpg'); // Menu BG
+            this.addUrl('https://w0.peakpx.com/wallpaper/593/223/HD-wallpaper-superman-vs-goku-dragoonball-goku-marvel-superman.jpg'); // Select BG
+        },
+
+        addUrl: function(url) {
+            if (url && url.length > 5 && !this.assets.includes(url)) {
+                this.assets.push(url);
+            }
+        },
+
+        start: function() {
+            this.collectAssets();
+            this.total = this.assets.length;
+            
+            if (this.total === 0) {
+                this.finish();
+                return;
+            }
+
+            // Inicia o download paralelo de tudo
+            this.assets.forEach(url => {
+                const img = new Image();
+                
+                // Sucesso
+                img.onload = () => {
+                    this.progress();
+                };
+                
+                // Erro (Não trava o jogo, apenas conta como carregado e segue)
+                img.onerror = () => {
+                    console.warn('Falha ao carregar asset:', url);
+                    this.progress();
+                };
+
+                // Força o browser a buscar a imagem
+                img.src = url;
+            });
+        },
+
+        progress: function() {
+            this.loaded++;
+            const pct = Math.floor((this.loaded / this.total) * 100);
+            
+            // Atualiza UI
+            this.bar.style.width = pct + "%";
+            this.txt.innerText = pct + "%";
+
+            if (this.loaded >= this.total) {
+                setTimeout(() => this.finish(), 500); // Pequeno delay visual para ver o 100%
+            }
+        },
+
+        finish: function() {
+            this.overlay.style.opacity = '0';
+            setTimeout(() => {
+                this.overlay.style.display = 'none';
+                // Chama o inicializador do jogo ORIGINAL
+                if (typeof Game !== 'undefined' && Game.init) {
+                    Game.init();
+                }
+            }, 500);
+        }
+    };
+
+    // SOBRESCREVE o window.onload original para rodar o Preloader primeiro
+    window.onload = function() {
+        console.log("Iniciando Preloader do SuperSky Storm...");
+        Preloader.start();
+    };
+</script>
+
 </body>
 </html>
