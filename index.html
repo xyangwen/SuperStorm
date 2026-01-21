@@ -2026,6 +2026,83 @@ window.onload = () => Game.init();
         Preloader.start();
     };
 </script>
+<script>
+(function() {
+    console.log("Iniciando patch de correção de imagens para GitHub...");
+
+    // Função para tratar imagens de fundo (Cenários) que vão para o CANVAS
+    // Usa o serviço wsrv.nl para garantir HTTPS e cabeçalhos CORS corretos
+    function fixCanvasUrl(url) {
+        if (!url) return '';
+        // Se já for base64 ou blob, ignora
+        if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+        
+        // Remove protocolo http/https para limpar
+        let cleanUrl = url.replace(/^https?:\/\//, '');
+        // Retorna a URL passando pelo proxy que permite o desenho no Canvas
+        return 'https://wsrv.nl/?url=' + encodeURIComponent(cleanUrl) + '&output=jpg&q=85';
+    }
+
+    // Função para tratar imagens normais (Personagens/GIFs)
+    // GIFs não podem passar pelo proxy wsrv.nl senão viram estáticos, 
+    // então apenas forçamos HTTPS para não dar erro de Mixed Content.
+    function fixSecureUrl(url) {
+        if (!url) return '';
+        if (url.startsWith('http://')) {
+            return url.replace('http://', 'https://');
+        }
+        return url;
+    }
+
+    // 1. Aplicar correção nos CENÁRIOS (Essencial para o fundo não ficar preto)
+    if (typeof SCENARIOS !== 'undefined') {
+        SCENARIOS.forEach(function(scene) {
+            scene.url = fixCanvasUrl(scene.url);
+        });
+    }
+
+    // 2. Aplicar correção nos HERÓIS (Garante HTTPS)
+    if (typeof HEROES_SKINS !== 'undefined') {
+        HEROES_SKINS.forEach(function(hero) {
+            hero.icon = fixSecureUrl(hero.icon);
+            hero.introGif = fixSecureUrl(hero.introGif);
+            hero.gameGif = fixSecureUrl(hero.gameGif);
+        });
+    }
+
+    // 3. Atualizar imagens da UI (Menu e Telas)
+    // Corrige o fundo do menu principal
+    var menuScreen = document.getElementById('menu-screen');
+    if (menuScreen) {
+        var menuBg = 'https://wallpapers.com/images/hd/dark-superman-superhero-iphone-m2jk0xvpaxiyoyua.jpg';
+        menuScreen.style.backgroundImage = "url('" + fixCanvasUrl(menuBg) + "')";
+    }
+
+    // Corrige fundos de seleção
+    var screensWithBg = ['hero-select-screen', 'skin-select-screen', 'scenario-select-screen'];
+    var commonBg = 'https://w0.peakpx.com/wallpaper/593/223/HD-wallpaper-superman-vs-goku-dragoonball-goku-marvel-superman.jpg';
+    screensWithBg.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.backgroundImage = "url('" + fixCanvasUrl(commonBg) + "')";
+    });
+    
+    // Corrige fundo do Score
+    var scoreScreen = document.getElementById('score-screen');
+    if (scoreScreen) {
+        // Tenor as vezes bloqueia hotlink, tentamos forçar HTTPS direto ou usar proxy se for estático
+        // Como é GIF, apenas forçamos HTTPS
+        scoreScreen.style.backgroundImage = "url('" + fixSecureUrl('https://media1.tenor.com/m/axi9xVrR8goAAAAd/dragon-ball-dragon-ball-z.gif') + "')";
+    }
+
+    // Reinicia a lista de assets do Preloader para garantir que ele carregue as novas URLs corrigidas
+    if (typeof Preloader !== 'undefined') {
+        Preloader.assets = [];
+        Preloader.collectAssets(); // Re-coleta as URLs agora atualizadas
+    }
+
+    console.log("Correção de imagens aplicada com sucesso.");
+})();
+</script>
 
 </body>
 </html>
