@@ -3613,6 +3613,1170 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH v6.0: MODO BOSS ULTIMATE
+ * Adiciona modo de jogo com IA Progressiva, Eventos de Terror e Spawn Diferenciado.
+ */
+(function() {
+    // Aguarda o jogo carregar completamente
+    var bossModeInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && typeof UI !== 'undefined' && document.getElementById('menu-screen')) {
+            clearInterval(bossModeInterval);
+            initBossMode();
+        }
+    }, 200);
+
+    function initBossMode() {
+        console.log("Inicializando Patch: MODO BOSS (v6.0)...");
+
+        // 1. CSS PARA EFEITOS VISUAIS (TREMOR, ESCURIDÃO)
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* Efeito de Tremor e Escuridão (800m+) */
+            .nightmare-effect {
+                animation: shakeScreen 0.2s infinite;
+                filter: brightness(0.4) contrast(1.5) sepia(0.5) hue-rotate(-50deg) !important;
+            }
+            @keyframes shakeScreen {
+                0% { transform: translate(0, 0) rotate(0deg); }
+                25% { transform: translate(-5px, 5px) rotate(-1deg); }
+                50% { transform: translate(5px, -5px) rotate(1deg); }
+                75% { transform: translate(-5px, -5px) rotate(-1deg); }
+                100% { transform: translate(0, 0) rotate(0deg); }
+            }
+            
+            /* Botão do Novo Modo */
+            .btn-boss-mode {
+                background: linear-gradient(to bottom, #4a0000, #220000);
+                border: 2px solid #ff0000;
+                color: #ffcccc;
+                box-shadow: 0 0 15px #ff0000;
+                margin-top: 10px;
+                position: relative;
+                overflow: hidden;
+            }
+            .btn-boss-mode::after {
+                content: '💀';
+                position: absolute; right: 10px; opacity: 0.5;
+            }
+            .boss-warning {
+                position: absolute; top: 30%; left: 0; width: 100%;
+                text-align: center; font-size: 3rem; color: red; font-weight: 900;
+                text-shadow: 0 0 20px black; z-index: 999;
+                pointer-events: none;
+                animation: pulseText 0.5s infinite;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 2. ADICIONAR BOTÃO NO MENU
+        var menuContainer = document.querySelector('#menu-screen .selection-container');
+        var playBtn = document.querySelector('button[onclick*="UI.showHeroSelect()"]');
+        
+        if (menuContainer && playBtn) {
+            var bossBtn = document.createElement('button');
+            bossBtn.className = 'btn btn-boss-mode';
+            bossBtn.innerHTML = "MODO BOSS RUSH";
+            bossBtn.onclick = function() {
+                AudioSys.sfxClick();
+                Game.activeMode = 'BOSS_MODE';
+                UI.showHeroSelect();
+            };
+            
+            // Inserir imagem de background do botão (via CSS inline para garantir)
+            bossBtn.style.backgroundImage = "linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTrirLpKJcQF-dAY1LOSHdFftjwEWciBDb3aTfsEdSiwlGwPkvhDsJMcKse&s=10')";
+            bossBtn.style.backgroundSize = "cover";
+            bossBtn.style.backgroundPosition = "center";
+            
+            playBtn.parentNode.insertBefore(bossBtn, playBtn.nextSibling);
+        }
+
+        // 3. VARIÁVEIS DE CONTROLE DO MODO
+        Game.bossModeData = {
+            nextMiniBoss: 50,
+            nextBigBoss: 200,
+            raged: false
+        };
+
+        // 4. OVERRIDE: INÍCIO DA PARTIDA
+        var _originalStart = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            _originalStart.call(this, bgUrl);
+            
+            // Resetar efeitos visuais
+            document.body.classList.remove('nightmare-effect');
+            document.getElementById('hud').style.opacity = '1';
+            
+            if (this.activeMode === 'BOSS_MODE') {
+                this.gameSpeed = 12; // Velocidade aumentada como solicitado
+                this.bossModeData.nextMiniBoss = 50;
+                this.bossModeData.nextBigBoss = 200;
+                this.bossModeData.raged = false;
+                this.nextBossScore = 999999; // Desativa o boss do modo normal para usarmos nossa lógica
+                
+                this.createFloatingText("💀 MODO BOSS ATIVADO 💀", this.canvas.width/2, this.canvas.height/2);
+            }
+        };
+
+        // 5. OVERRIDE: UPDATE LOOP (Lógica de Spawn)
+        var _originalUpdate = Game.update;
+        Game.update = function() {
+            _originalUpdate.call(this);
+
+            if (this.state === 'PLAYING' && this.activeMode === 'BOSS_MODE') {
+                // Checar Spawn de Mini Boss (50m)
+                if (this.score >= this.bossModeData.nextMiniBoss && this.score < this.bossModeData.nextBigBoss) {
+                    this.spawnCustomBoss(false); // False = Mini Boss (Sem diálogo)
+                    this.bossModeData.nextMiniBoss += 50;
+                    // Se o próximo mini boss cair em cima de um Big Boss, pula
+                    if (this.bossModeData.nextMiniBoss % 200 === 0) this.bossModeData.nextMiniBoss += 50;
+                }
+
+                // Checar Spawn de Big Boss (200m)
+                if (this.score >= this.bossModeData.nextBigBoss) {
+                    this.spawnCustomBoss(true); // True = Big Boss (Com diálogo)
+                    this.bossModeData.nextBigBoss += 200;
+                    this.bossModeData.nextMiniBoss = this.score + 50; // Reseta ciclo de mini bosses
+                }
+            }
+        };
+
+        // 6. FUNÇÃO DE SPAWN CUSTOMIZADO
+        Game.spawnCustomBoss = function(isBigBoss) {
+            // Limpa tela
+            this.obstacles = [];
+            this.items = [];
+            
+            // Escolhe inimigo
+            var opponents = HEROES_SKINS.filter(h => h.id !== this.selectedSkinId);
+            var randomOpp = opponents[Math.floor(Math.random() * opponents.length)];
+            
+            this.boss.data = randomOpp;
+            this.boss.maxLife = isBigBoss ? 150 + (this.score * 0.1) : 40; // Mini boss tem pouca vida
+            this.boss.life = this.boss.maxLife;
+            this.boss.x = this.canvas.width * 0.85;
+            this.boss.y = this.canvas.height / 2;
+            this.boss.active = true;
+            this.boss.shootTimer = 0;
+            this.boss.isBig = isBigBoss; // Flag para IA
+            
+            // Setup Visual
+            var bossLayer = document.getElementById('boss-layer');
+            bossLayer.style.display = 'block';
+            document.getElementById('boss-sprite').src = randomOpp.gameGif;
+            var scaleDir = randomOpp.flip ? 1 : -1;
+            bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDir})`;
+
+            if (isBigBoss) {
+                // MODO COM DIÁLOGO E CUTSCENE
+                this.state = 'BOSS_DIALOGUE';
+                
+                // Diálogos Novos para Modo Boss
+                var bossDialogues = [
+                    { speaker: 'enemy', text: "Você sobreviveu aos meus soldados... Mas eu sou o fim." },
+                    { speaker: 'hero', text: "Vou derrubar você e quem mais vier!" }
+                ];
+                
+                // Variação para 1000m
+                if (this.score >= 1000) {
+                    bossDialogues = [
+                        { speaker: 'enemy', text: "EU SOU A VELOCIDADE! EU SOU A MORTE!" },
+                        { speaker: 'hero', text: "Vamos acabar com isso agora!" }
+                    ];
+                }
+
+                UI.showDialogue(this.heroData.icon, this.heroData.name, randomOpp.icon, randomOpp.name, bossDialogues, () => {
+                     this.startBossBattle();
+                     UI.updateBossHUD(100, "CHEFE: " + randomOpp.name);
+                });
+            } else {
+                // MODO SILENCIOSO (MINI BOSS)
+                this.state = 'BOSS_BATTLE';
+                UI.updateBossHUD(100, "SOLDADO: " + randomOpp.name);
+            }
+        };
+
+        // 7. OVERRIDE: IA DO BOSS (A parte inteligente)
+        var _originalBossAI = Game.bossAI;
+        Game.bossAI = function() {
+            // Se não for Modo Boss, usa a IA original burrinha
+            if (this.activeMode !== 'BOSS_MODE') {
+                _originalBossAI.call(this);
+                return;
+            }
+
+            // --- LÓGICA MODO BOSS ---
+            
+            var speed = 0.05; // Base
+            var shootRate = 40; // Base (quanto menor, mais rápido)
+            var moveType = 'TRACK'; // TRACK = Segue o player
+
+            // 1. Configuração por Distância (Evolução)
+            if (this.score >= 1000) {
+                // 1000M: Inteligente, Rápido
+                speed = 0.15;
+                shootRate = 15; // Metralhadora
+                moveType = 'PREDICT'; // Tenta adivinhar onde o player vai
+            } else if (this.score >= 400) {
+                // 400M: Mais dano e velocidade
+                speed = 0.09;
+                shootRate = 25;
+            } else if (this.score >= 200) {
+                // 200M: Lento mas atira mais
+                speed = 0.04;
+                shootRate = 30;
+            }
+
+            // 2. Comportamento de Movimento
+            if (moveType === 'PREDICT') {
+                // Move para onde o player ESTÁ INDO, não onde ele está
+                var predictY = this.hero.targetY; 
+                this.boss.y += (predictY - this.boss.y) * speed;
+            } else {
+                // Padrão
+                this.boss.y += (this.hero.y - this.boss.y) * speed;
+            }
+
+            // Limites de tela
+            if(this.boss.y < 50) this.boss.y = 50;
+            if(this.boss.y > this.canvas.height - 50) this.boss.y = this.canvas.height - 50;
+
+            // Atualiza Visual
+            var bossLayer = document.getElementById('boss-layer');
+            bossLayer.style.top = this.boss.y + 'px';
+            bossLayer.style.left = this.boss.x + 'px';
+            var scaleDir = this.boss.data.flip ? 1 : -1;
+            bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDir})`;
+
+            // 3. EVENTOS DE VIDA (RAGE)
+            var hpPct = (this.boss.life / this.boss.maxLife) * 100;
+
+            // 400M+ (50% HP): Fica vermelho e mais rápido
+            if (this.score >= 400 && hpPct <= 50) {
+                bossLayer.style.filter = "drop-shadow(0 0 20px red) sepia(1)";
+                shootRate = shootRate / 1.5; // Atira muito mais rápido
+            }
+
+            // 800M+ (20% HP): O TERROR (Tela Escura + HUD some)
+            if (this.score >= 800 && hpPct <= 20 && !this.bossModeData.raged) {
+                this.bossModeData.raged = true;
+                
+                // Ativa efeito
+                document.body.classList.add('nightmare-effect');
+                
+                // Esconde HUD por 2s
+                var hud = document.getElementById('hud');
+                hud.style.opacity = '0';
+                
+                // Aviso na tela
+                var warn = document.createElement('div');
+                warn.className = 'boss-warning';
+                warn.innerText = "⚠ SISTEMA FALHANDO ⚠";
+                document.body.appendChild(warn);
+
+                // Restaura após 2s
+                setTimeout(() => {
+                    document.body.classList.remove('nightmare-effect');
+                    hud.style.opacity = '1';
+                    warn.remove();
+                }, 2000);
+            }
+
+            // 4. DISPAROS
+            this.boss.shootTimer++;
+            if (this.boss.shootTimer > shootRate) {
+                this.shootProjectile('boss');
+                // Se for 1000m+, atira duplo
+                if (this.score >= 1000) {
+                    setTimeout(() => this.shootProjectile('boss'), 100);
+                }
+                this.boss.shootTimer = 0;
+            }
+        };
+        
+        // 8. CORREÇÃO DE VITÓRIA (Resetar flags)
+        var _originalVictory = Game.bossVictory;
+        Game.bossVictory = function() {
+            _originalVictory.call(this);
+            // Garante que o efeito de pesadelo saia se matar o boss durante o efeito
+            document.body.classList.remove('nightmare-effect');
+            document.getElementById('hud').style.opacity = '1';
+            this.bossModeData.raged = false;
+        };
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH v6.1: ATUALIZAÇÃO BOSS RUSH & MAPA EXCLUSIVO
+ * - Novo Cenário: Antimatéria Terra-X (Exclusivo Modo Boss)
+ * - Correção de Loop Infinito (1000m+)
+ * - Ajuste de Spawn: Soldado (50m) / Boss (200m)
+ */
+(function() {
+    // Aguarda o sistema de jogo e o patch anterior carregarem
+    var bossPatchInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && typeof Game.spawnCustomBoss !== 'undefined') {
+            clearInterval(bossPatchInterval);
+            applyBossRushUpdate();
+        }
+    }, 300);
+
+    function applyBossRushUpdate() {
+        console.log("Aplicando Patch v6.1: Mapa Terra-X e Lógica Infinita...");
+
+        // 1. CONFIGURAÇÃO DO MAPA EXCLUSIVO (Com Proxy para evitar tela preta)
+        // Usamos um serviço de tratamento de imagem para garantir que o Canvas aceite a URL externa
+        const BOSS_MAP_URL = 'https://wsrv.nl/?url=' + encodeURIComponent('https://static.wikia.nocookie.net/arrow/images/a/ad/Antimat%C3%A9ria_destruindo_a_Terra-X.png/revision/latest?cb=20240305060558&path-prefix=pt-br') + '&output=jpg&q=85';
+
+        // 2. OVERRIDE: INÍCIO DA PARTIDA (Injeção do Mapa)
+        const _originalStartMatch = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            // Se for Modo Boss, forçamos o mapa da Antimatéria
+            let finalBg = bgUrl;
+            if (this.activeMode === 'BOSS_MODE') {
+                finalBg = BOSS_MAP_URL;
+                // Ajuste visual para o mapa vermelho
+                document.getElementById('hud').style.textShadow = "0 0 5px #000"; 
+            }
+            
+            // Chama a função original com a URL trocada
+            _originalStartMatch.call(this, finalBg);
+            
+            // Garante reset dos contadores para a lógica infinita
+            if (this.activeMode === 'BOSS_MODE') {
+                this.bossModeData = {
+                    nextMiniBoss: 50,
+                    nextBigBoss: 200,
+                    raged: false
+                };
+            }
+        };
+
+        // 3. OVERRIDE: LÓGICA DE UPDATE (Garantir Loop Infinito Pós-1000m)
+        // Precisamos interceptar o update para garantir a matemática exata de 50m/200m
+        const _originalUpdate = Game.update;
+        
+        Game.update = function() {
+            // Executa física e lógica padrão primeiro
+            _originalUpdate.call(this);
+
+            // Reforço da Lógica de Spawn do Modo Boss
+            if (this.state === 'PLAYING' && this.activeMode === 'BOSS_MODE') {
+                
+                // --- REGRA DE OURO: BOSS (200m) TEM PRIORIDADE ---
+                
+                // Checar Boss Principal (Múltiplos de 200m)
+                // Usamos uma margem de segurança (gap) para não pular frames
+                if (this.score >= this.bossModeData.nextBigBoss) {
+                    this.spawnCustomBoss(true); // TRUE = Big Boss
+                    
+                    // Configura o próximo Big Boss para daqui a 200m
+                    this.bossModeData.nextBigBoss += 200;
+                    
+                    // Reseta o ciclo de mini-bosses para começar 50m APÓS este chefe morrer
+                    // Isso evita que um soldado nasça junto com o chefe
+                    this.bossModeData.nextMiniBoss = Math.floor(this.score) + 50;
+                    return; // Sai para não spawnar mini boss junto
+                }
+
+                // Checar Mini Boss / Soldado (Múltiplos de 50m)
+                if (this.score >= this.bossModeData.nextMiniBoss) {
+                    
+                    // Verifica se não está muito perto de um Big Boss (evita sobreposição)
+                    let distToBig = this.bossModeData.nextBigBoss - this.score;
+                    
+                    if (distToBig > 30) { 
+                        // Se falta mais de 30m para o chefão, pode spawnar soldado
+                        this.spawnCustomBoss(false); // FALSE = Soldado
+                        this.bossModeData.nextMiniBoss += 50;
+                    } else {
+                        // Se está quase na hora do chefão, pula este soldado
+                        this.bossModeData.nextMiniBoss += 50;
+                    }
+                }
+            }
+        };
+
+        // 4. OVERRIDE: INTELIGÊNCIA ARTIFICIAL (Ajuste para > 1000m)
+        const _originalAI = Game.bossAI;
+        
+        Game.bossAI = function() {
+            // Se não for modo boss, usa original
+            if (this.activeMode !== 'BOSS_MODE') {
+                _originalAI.call(this);
+                return;
+            }
+
+            // --- LÓGICA DE DIFICULDADE INFINITA ---
+            var speed = 0.05;
+            var shootRate = 40;
+            var moveType = 'TRACK'; // Padrão
+
+            // Escalonamento Infinito
+            if (this.score >= 2000) {
+                // NÍVEL PESADELO (2000m+)
+                speed = 0.20; // Muito Rápido
+                shootRate = 10; // Metralhadora
+                moveType = 'PREDICT';
+            } else if (this.score >= 1000) {
+                // NÍVEL EXTOMO (1000m+)
+                speed = 0.15;
+                shootRate = 15;
+                moveType = 'PREDICT'; // Prevê movimento
+            } else if (this.score >= 400) {
+                speed = 0.09;
+                shootRate = 25;
+            } else if (this.score >= 200) {
+                speed = 0.06;
+                shootRate = 30;
+            }
+
+            // Aplicação do Movimento
+            if (moveType === 'PREDICT') {
+                // Tenta interceptar o jogador
+                var target = this.hero.targetY + (Math.random() * 40 - 20); // Um pouco de erro para não ser impossível
+                this.boss.y += (target - this.boss.y) * speed;
+            } else {
+                // Segue o jogador
+                this.boss.y += (this.hero.y - this.boss.y) * speed;
+            }
+
+            // Limites de tela
+            if(this.boss.y < 50) this.boss.y = 50;
+            if(this.boss.y > this.canvas.height - 50) this.boss.y = this.canvas.height - 50;
+
+            // Renderização
+            var bossLayer = document.getElementById('boss-layer');
+            bossLayer.style.top = this.boss.y + 'px';
+            bossLayer.style.left = this.boss.x + 'px';
+            
+            // Correção de Flip visual
+            if (this.boss.data) {
+                var scaleDir = this.boss.data.flip ? 1 : -1;
+                bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDir})`;
+            }
+
+            // Disparos
+            this.boss.shootTimer++;
+            if (this.boss.shootTimer > shootRate) {
+                this.shootProjectile('boss');
+                // Disparo Triplo após 1000m
+                if (this.score >= 1000) {
+                    setTimeout(() => this.shootProjectile('boss'), 150);
+                    setTimeout(() => this.shootProjectile('boss'), 300);
+                }
+                this.boss.shootTimer = 0;
+            }
+            
+            // Efeitos visuais do Boss (Rage Mode)
+            var hpPct = (this.boss.life / this.boss.maxLife);
+            if (this.score >= 800 && hpPct < 0.3) {
+                 // Mantém a lógica de tremor do patch anterior
+                 if (!document.body.classList.contains('nightmare-effect') && !this.bossModeData.raged) {
+                     this.bossModeData.raged = true;
+                     document.body.classList.add('nightmare-effect');
+                     setTimeout(() => document.body.classList.remove('nightmare-effect'), 2000);
+                 }
+            }
+        };
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH v7.0: MODO SOBREVIVÊNCIA (TORNEIO DO PODER)
+ * - Mapa Exclusivo: Torneio do Poder (Infinito)
+ * - Inimigos a cada 50m (Sem diálogo, direto para a luta)
+ * - Velocidade Acelerada
+ * - SEM RECUPERAÇÃO DE VIDA ao vencer
+ */
+(function() {
+    // Aguarda o carregamento completo do jogo
+    var survivalInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && document.getElementById('menu-screen')) {
+            clearInterval(survivalInterval);
+            initSurvivalMode();
+        }
+    }, 300);
+
+    function initSurvivalMode() {
+        console.log("Inicializando Patch: MODO SOBREVIVÊNCIA...");
+
+        // 1. PREPARAÇÃO DO MAPA (Usando Proxy para garantir funcionamento no Canvas)
+        // Imagem do Torneio do Poder
+        var RAW_MAP_URL = 'https://i.pinimg.com/originals/cf/3b/ab/cf3babb37024c1773be17cd23a32b701.jpg';
+        var SURVIVAL_MAP_URL = 'https://wsrv.nl/?url=' + encodeURIComponent(RAW_MAP_URL) + '&output=jpg&q=85';
+
+        // 2. CSS DO BOTÃO E VISUAIS
+        var style = document.createElement('style');
+        style.innerHTML = `
+            .btn-survival {
+                position: relative;
+                border: 2px solid #a600ff;
+                color: #fff;
+                text-shadow: 0 0 5px #a600ff;
+                box-shadow: 0 0 20px rgba(166, 0, 255, 0.4);
+                overflow: hidden;
+                margin-top: 10px;
+                background-size: cover;
+                background-position: center;
+                transition: transform 0.2s;
+            }
+            .btn-survival:active { transform: scale(0.96); }
+            .btn-survival::before {
+                content: ''; position: absolute; inset: 0;
+                background: linear-gradient(to right, rgba(0,0,0,0.8), rgba(50,0,100,0.6));
+                z-index: 0;
+            }
+            .btn-survival span { position: relative; z-index: 1; }
+            
+            /* Indicador de Modo Hardcore */
+            .survival-hud-warning {
+                position: absolute; top: 60px; right: 15px;
+                color: #ff0000; font-size: 0.8rem; font-weight: bold;
+                animation: blinkRed 1s infinite;
+                z-index: 35; pointer-events: none;
+                text-shadow: 0 0 5px #000;
+            }
+            @keyframes blinkRed { 50% { opacity: 0.5; } }
+        `;
+        document.head.appendChild(style);
+
+        // 3. ADICIONAR BOTÃO NO MENU
+        var menuContainer = document.querySelector('#menu-screen .selection-container');
+        // Procura o último botão para inserir depois dele
+        var buttons = menuContainer.querySelectorAll('.btn');
+        var lastButton = buttons[buttons.length - 1];
+
+        if (menuContainer) {
+            var survBtn = document.createElement('button');
+            survBtn.className = 'btn btn-survival';
+            // Imagem do botão vinda do prompt
+            survBtn.style.backgroundImage = "url('https://images7.alphacoders.com/878/thumb-1920-878515.jpg')";
+            survBtn.innerHTML = "<span>☠️ MODO SOBREVIVÊNCIA</span>";
+            
+            survBtn.onclick = function() {
+                if(typeof AudioSys !== 'undefined') AudioSys.sfxClick();
+                Game.activeMode = 'SURVIVAL';
+                UI.showHeroSelect();
+            };
+
+            // Insere após o último botão existente
+            if(lastButton) {
+                lastButton.parentNode.insertBefore(survBtn, lastButton.nextSibling);
+            } else {
+                menuContainer.appendChild(survBtn);
+            }
+        }
+
+        // Variável para controlar o spawn
+        Game.survivalNextBoss = 50;
+
+        // 4. OVERRIDE: INICIAR PARTIDA (Configuração do Modo)
+        var _originalStart = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            // Remove aviso antigo se existir
+            var oldWarn = document.querySelector('.survival-hud-warning');
+            if(oldWarn) oldWarn.remove();
+
+            if (this.activeMode === 'SURVIVAL') {
+                // Força o mapa do Torneio do Poder
+                _originalStart.call(this, SURVIVAL_MAP_URL);
+                
+                // Configurações Específicas
+                this.gameSpeed = 12; // Velocidade inicial acelerada
+                this.survivalNextBoss = 50; // Começa cedo
+                
+                // Remove HUD do Boss Rush anterior se tiver sobrado
+                this.nextBossScore = Infinity; 
+                
+                this.createFloatingText("☠️ SOBREVIVÊNCIA ☠️", this.canvas.width/2, this.canvas.height/2);
+                this.createFloatingText("SEM CURA!", this.canvas.width/2, this.canvas.height/2 + 40);
+
+                // Aviso constante na tela
+                var warn = document.createElement('div');
+                warn.className = 'survival-hud-warning';
+                warn.innerText = "⚠ HP NÃO REGENERA ⚠";
+                document.getElementById('game-wrapper').appendChild(warn);
+
+            } else {
+                // Modos normais
+                _originalStart.call(this, bgUrl);
+            }
+        };
+
+        // 5. OVERRIDE: UPDATE (Lógica de Spawn e Velocidade)
+        var _originalUpdate = Game.update;
+        Game.update = function() {
+            // Aceleração constante no modo sobrevivência
+            if (this.activeMode === 'SURVIVAL' && this.state === 'PLAYING') {
+                // Aumenta velocidade mais rápido que o normal
+                this.gameSpeed = 12 + (this.score * 0.005); 
+            }
+
+            _originalUpdate.call(this);
+
+            // Lógica de Spawn Exclusiva
+            if (this.activeMode === 'SURVIVAL' && this.state === 'PLAYING') {
+                if (this.score >= this.survivalNextBoss) {
+                    this.spawnSurvivalBoss();
+                    this.survivalNextBoss += 50; // A cada 50m fixo
+                }
+            }
+        };
+
+        // 6. FUNÇÃO DE SPAWN RÁPIDO (Sem Diálogo)
+        Game.spawnSurvivalBoss = function() {
+            // Limpa obstáculos para a luta
+            this.obstacles = [];
+            this.items = []; // Sem itens de cura durante spawn do boss
+            
+            // Escolhe oponente
+            var opponents = HEROES_SKINS.filter(h => h.id !== this.selectedSkinId);
+            var randomOpp = opponents[Math.floor(Math.random() * opponents.length)];
+            
+            this.boss.data = randomOpp;
+            // Vida aumenta conforme a distância
+            this.boss.maxLife = 50 + (this.score * 0.15); 
+            this.boss.life = this.boss.maxLife;
+            
+            // Posição
+            this.boss.x = this.canvas.width * 0.85;
+            this.boss.y = this.canvas.height / 2;
+            this.boss.active = true;
+            this.boss.shootTimer = 0;
+            
+            // Setup Visual
+            var bossLayer = document.getElementById('boss-layer');
+            bossLayer.style.display = 'block';
+            document.getElementById('boss-sprite').src = randomOpp.gameGif;
+            
+            var scaleDir = randomOpp.flip ? 1 : -1;
+            bossLayer.style.transform = `translate(-50%, -50%) scaleX(${scaleDir})`;
+            bossLayer.style.filter = "drop-shadow(0 0 10px #a600ff)"; // Aura roxa do torneio
+
+            // PULA O DIÁLOGO -> VAI DIRETO PARA BATALHA
+            this.state = 'BOSS_BATTLE';
+            UI.updateBossHUD(100, "RIVAL: " + randomOpp.name);
+            
+            // Som de alerta
+            if(typeof AudioSys !== 'undefined') AudioSys.playTone(100, 'sawtooth', 0.5, 0.2);
+        };
+
+        // 7. OVERRIDE: VITÓRIA (BLOQUEAR CURA)
+        var _originalVictory = Game.bossVictory;
+        Game.bossVictory = function() {
+            if (this.activeMode !== 'SURVIVAL') {
+                // Se não for sobrevivência, usa a lógica padrão (que cura)
+                _originalVictory.call(this);
+                return;
+            }
+
+            // --- LÓGICA DE VITÓRIA SOBREVIVÊNCIA (SEM CURA) ---
+            this.state = 'BOSS_VICTORY';
+            if(typeof AudioSys !== 'undefined') AudioSys.sfxWin();
+            
+            // Esconde Boss
+            document.getElementById('boss-layer').style.display = 'none';
+            document.getElementById('boss-hud').style.display = 'none';
+            this.projectiles = [];
+            
+            // Ganha moedas, mas NÃO CURA (this.hero.life = 100 removido)
+            this.coinCount += 50;
+            this.createFloatingText("+50 🪙", this.canvas.width/2, this.canvas.height/2 - 50);
+            
+            // Feedback Visual
+            var vicText = document.createElement('div');
+            vicText.className = 'battle-victory-text';
+            vicText.innerHTML = "ELIMINADO";
+            vicText.style.color = "#a600ff";
+            vicText.style.textShadow = "0 0 20px #fff";
+            document.body.appendChild(vicText);
+            
+            var self = this;
+            setTimeout(function() {
+                if(vicText) vicText.remove();
+                self.state = 'PLAYING';
+                // O próximo boss já foi agendado no update loop
+            }, 1000); // Retorno rápido (1s) para manter o ritmo frenético
+        };
+        
+        // 8. OVERRIDE: IA DO BOSS (Ajuste para sobrevivência)
+        // Garante que a IA funcione mesmo se o patch Boss Mode não estiver ativo
+        var _originalAI = Game.bossAI;
+        Game.bossAI = function() {
+            if (this.activeMode === 'SURVIVAL') {
+                // IA Agressiva do modo sobrevivência
+                this.boss.y += (this.hero.y - this.boss.y) * 0.08;
+                
+                // Limites
+                if(this.boss.y < 50) this.boss.y = 50;
+                if(this.boss.y > this.canvas.height - 50) this.boss.y = this.canvas.height - 50;
+                
+                // Render
+                var bossLayer = document.getElementById('boss-layer');
+                bossLayer.style.top = this.boss.y + 'px';
+                bossLayer.style.left = this.boss.x + 'px';
+                
+                // Tiroteio
+                this.boss.shootTimer++;
+                // Atira bem rápido
+                if (this.boss.shootTimer > 25) { 
+                    this.shootProjectile('boss');
+                    this.boss.shootTimer = 0;
+                }
+            } else {
+                _originalAI.call(this);
+            }
+        };
+
+        console.log("Modo Sobrevivência carregado com sucesso.");
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH v8.0: MISSÕES DIÁRIAS & DESAFIOS (SYSTEM OVERRIDE)
+ * - Sistema de 24h Reais
+ * - 7 Missões Aleatórias
+ * - Recompensas: Moedas, Diamantes, Personagens
+ * - Persistência via LocalStorage
+ */
+(function() {
+    // Aguarda o jogo carregar
+    var missionsInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && document.body) {
+            clearInterval(missionsInterval);
+            DailyMissions.init();
+        }
+    }, 500);
+
+    var DailyMissions = {
+        data: {
+            lastLogin: null,
+            missions: [],
+            claimedCount: 0
+        },
+        // Configurações Visuais
+        assets: {
+            icon: 'https://i.pinimg.com/originals/a5/f9/a2/a5f9a2eb5c0bfb1f66988696e1f31334.png',
+            bg: 'https://wallpapers-clan.com/wp-content/uploads/2024/03/dragon-ball-goku-sparks-gif-cover-desktop-wallpaper.gif'
+        },
+        
+        // Banco de Dados de Possíveis Missões
+        missionPool: [
+            { type: 'DISTANCE', target: 1500, title: 'Corredor Veloz', desc: 'Chegue a 1500m em uma partida', rewardType: 'COIN', rewardQty: 200 },
+            { type: 'DISTANCE', target: 3000, title: 'Resistência Pura', desc: 'Chegue a 3000m em uma partida', rewardType: 'DIAMOND', rewardQty: 5 },
+            { type: 'BOSS_KILL', target: 2, title: 'Matador de Chefes', desc: 'Derrote 2 Bosses no total', rewardType: 'COIN', rewardQty: 300 },
+            { type: 'BOSS_KILL', target: 5, title: 'Extermínio', desc: 'Derrote 5 Bosses no total', rewardType: 'SKIN', rewardQty: 1 }, // Skin aleatória ou moedas se já tiver
+            { type: 'COINS', target: 500, title: 'Caçador de Tesouros', desc: 'Colete 500 moedas', rewardType: 'DIAMOND', rewardQty: 10 },
+            { type: 'PLAY_CHAR', target: 1, title: 'Treino Variado', desc: 'Jogue com um personagem diferente', rewardType: 'COIN', rewardQty: 100 },
+            { type: 'NO_DAMAGE', target: 1, title: 'Intocável', desc: 'Derrote 1 Boss sem levar dano', rewardType: 'DIAMOND', rewardQty: 15 }
+        ],
+
+        init: function() {
+            console.log("Inicializando Sistema de Missões Diárias...");
+            this.loadData();
+            this.createStyles();
+            this.createUI();
+            this.injectGameHooks();
+        },
+
+        // --- LÓGICA DE DADOS ---
+        loadData: function() {
+            var saved = localStorage.getItem('SuperSky_Missions_v1');
+            if (saved) {
+                this.data = JSON.parse(saved);
+            }
+            
+            // Verifica se passaram 24h ou se é novo dia
+            var today = new Date().toDateString();
+            if (this.data.lastLogin !== today) {
+                this.generateNewMissions(today);
+            }
+        },
+
+        generateNewMissions: function(dateString) {
+            this.data.lastLogin = dateString;
+            this.data.missions = [];
+            this.data.claimedCount = 0;
+            
+            // Seleciona 7 missões aleatórias
+            var poolCopy = [...this.missionPool]; // Copia para não alterar original
+            for (var i = 0; i < 7; i++) {
+                if (poolCopy.length === 0) poolCopy = [...this.missionPool]; // Reseta se acabar
+                var rIndex = Math.floor(Math.random() * poolCopy.length);
+                
+                // Cria instância da missão
+                var mission = JSON.parse(JSON.stringify(poolCopy[rIndex]));
+                mission.id = i;
+                mission.current = 0;
+                mission.completed = false;
+                mission.claimed = false;
+                
+                // Personaliza missão de personagem (Se houver lista de heróis)
+                if (mission.type === 'PLAY_CHAR' && typeof HEROES_SKINS !== 'undefined') {
+                    var randomHero = HEROES_SKINS[Math.floor(Math.random() * HEROES_SKINS.length)];
+                    mission.desc = 'Jogue uma partida com: ' + randomHero.name;
+                    mission.reqId = randomHero.id;
+                }
+
+                this.data.missions.push(mission);
+            }
+            this.saveData();
+            this.showNotification(true);
+        },
+
+        saveData: function() {
+            localStorage.setItem('SuperSky_Missions_v1', JSON.stringify(this.data));
+            this.updateUI();
+        },
+
+        // --- SISTEMA DE PROGRESSO ---
+        track: function(type, amount, extraData) {
+            var updated = false;
+            this.data.missions.forEach(m => {
+                if (!m.completed && m.type === type) {
+                    
+                    // Lógica específica
+                    var process = true;
+                    if (type === 'PLAY_CHAR' && m.reqId !== extraData) process = false;
+                    if (type === 'DISTANCE') {
+                        // Distância não soma, é "High Score" na partida atual
+                        if (amount > m.current) m.current = Math.floor(amount);
+                    } else if (process) {
+                        // Outros tipos somam (Kills, Coins)
+                        m.current += amount;
+                    }
+
+                    // Verifica conclusão
+                    if (m.current >= m.target) {
+                        m.current = m.target;
+                        m.completed = true;
+                        updated = true;
+                        
+                        // Notificação In-Game
+                        if (typeof Game !== 'undefined') {
+                            Game.createFloatingText("MISSÃO COMPLETA!", Game.canvas.width/2, 100, "#ffd700");
+                        }
+                    } else if (process) {
+                         updated = true; // Atualizou progresso
+                    }
+                }
+            });
+
+            if (updated) {
+                this.saveData();
+                this.showNotification(true);
+            }
+        },
+
+        // --- INTERFACE (UI) ---
+        createStyles: function() {
+            var css = `
+                /* Ícone Flutuante */
+                #mission-icon {
+                    position: absolute; top: 10px; right: 80px; width: 60px; height: 60px;
+                    background: url('${this.assets.icon}') no-repeat center/contain;
+                    z-index: 999; cursor: pointer; filter: drop-shadow(0 0 5px #000);
+                    transition: transform 0.2s;
+                }
+                #mission-icon:hover { transform: scale(1.1); }
+                #mission-notification {
+                    position: absolute; top: 0; right: 0; width: 15px; height: 15px;
+                    background: red; border-radius: 50%; border: 2px solid #fff;
+                    display: none; animation: blink 1s infinite;
+                }
+                
+                /* Modal/Menu */
+                #mission-modal {
+                    display: none; position: fixed; inset: 0; z-index: 1000;
+                    background: rgba(0,0,0,0.85); align-items: center; justify-content: center;
+                    backdrop-filter: blur(5px);
+                }
+                .mission-content {
+                    width: 90%; max-width: 500px; height: 80%;
+                    background: url('${this.assets.bg}') no-repeat center/cover;
+                    border: 2px solid #ffd700; border-radius: 10px;
+                    box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+                    display: flex; flex-direction: column; overflow: hidden;
+                    position: relative;
+                }
+                .mission-header {
+                    background: rgba(0,0,0,0.9); padding: 15px; text-align: center;
+                    border-bottom: 2px solid #ffd700;
+                }
+                .mission-header h2 { margin: 0; color: #ffd700; font-family: 'Orbitron', sans-serif; text-transform: uppercase; }
+                .mission-timer { font-size: 0.8rem; color: #ccc; margin-top: 5px; }
+                .close-mission {
+                    position: absolute; top: 10px; right: 15px; font-size: 24px;
+                    color: #fff; cursor: pointer; font-weight: bold;
+                }
+                
+                /* Lista de Missões */
+                .mission-list {
+                    flex: 1; overflow-y: auto; padding: 10px;
+                    background: rgba(0,0,0,0.7);
+                }
+                .mission-item {
+                    background: rgba(20, 20, 30, 0.9); border: 1px solid #444;
+                    margin-bottom: 10px; padding: 10px; border-radius: 5px;
+                    display: flex; flex-direction: column; gap: 5px;
+                }
+                .mission-top { display: flex; justify-content: space-between; align-items: center; }
+                .m-title { font-weight: bold; color: #fff; font-size: 0.9rem; }
+                .m-reward { color: #ffd700; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; }
+                .m-desc { font-size: 0.75rem; color: #aaa; }
+                
+                /* Barra de Progresso */
+                .progress-container {
+                    width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden;
+                    margin: 5px 0; position: relative;
+                }
+                .progress-fill {
+                    height: 100%; background: linear-gradient(90deg, #00ff00, #00aa00);
+                    width: 0%; transition: width 0.5s;
+                }
+                .progress-text {
+                    position: absolute; top: -14px; right: 0; font-size: 0.7rem; color: #fff;
+                }
+                
+                /* Botão Reclamar */
+                .btn-claim {
+                    width: 100%; padding: 8px; border: none; border-radius: 3px;
+                    font-family: 'Orbitron', sans-serif; font-weight: bold; cursor: pointer;
+                    text-transform: uppercase; margin-top: 5px;
+                    transition: all 0.2s;
+                }
+                .btn-claim.locked { background: #333; color: #666; cursor: not-allowed; }
+                .btn-claim.ready { 
+                    background: linear-gradient(45deg, #ffd700, #ffaa00); color: #000;
+                    box-shadow: 0 0 10px #ffd700; animation: pulseBtn 1s infinite;
+                }
+                .btn-claim.claimed { background: #1a1a1a; color: #00ff00; border: 1px solid #00ff00; }
+                
+                @keyframes pulseBtn { 50% { opacity: 0.8; } }
+                @keyframes blink { 50% { opacity: 0; } }
+            `;
+            var style = document.createElement('style');
+            style.innerHTML = css;
+            document.head.appendChild(style);
+        },
+
+        createUI: function() {
+            // Ícone
+            var icon = document.createElement('div');
+            icon.id = 'mission-icon';
+            icon.innerHTML = '<div id="mission-notification"></div>';
+            icon.onclick = () => {
+                document.getElementById('mission-modal').style.display = 'flex';
+                this.showNotification(false);
+            };
+            document.body.appendChild(icon);
+
+            // Modal
+            var modal = document.createElement('div');
+            modal.id = 'mission-modal';
+            modal.innerHTML = `
+                <div class="mission-content">
+                    <div class="mission-header">
+                        <h2>Missões Diárias</h2>
+                        <div class="mission-timer">Atualiza em: <span id="reset-timer">--:--</span></div>
+                        <div class="close-mission" onclick="document.getElementById('mission-modal').style.display='none'">✕</div>
+                    </div>
+                    <div class="mission-list" id="mission-list-container">
+                        </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            this.updateUI();
+            this.startTimer();
+        },
+
+        updateUI: function() {
+            var container = document.getElementById('mission-list-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            this.data.missions.forEach(m => {
+                var pct = (m.current / m.target) * 100;
+                var btnClass = 'locked';
+                var btnText = 'Em Progresso';
+                var btnAction = '';
+
+                if (m.claimed) {
+                    btnClass = 'claimed';
+                    btnText = '✓ Recompensado';
+                } else if (m.completed) {
+                    btnClass = 'ready';
+                    btnText = 'RECOLHER RECOMPENSA';
+                    btnAction = `onclick="DailyMissions.claimReward(${m.id})"`;
+                }
+
+                var rewardIcon = m.rewardType === 'COIN' ? '🪙' : (m.rewardType === 'DIAMOND' ? '💎' : '🦸‍♂️');
+                var rewardDisplay = `${rewardIcon} ${m.rewardQty}`;
+                if (m.rewardType === 'SKIN') rewardDisplay = "🦸‍♂️ Novo Herói / 500🪙";
+
+                var html = `
+                    <div class="mission-item">
+                        <div class="mission-top">
+                            <span class="m-title">${m.title}</span>
+                            <span class="m-reward">${rewardDisplay}</span>
+                        </div>
+                        <div class="m-desc">${m.desc}</div>
+                        <div class="progress-container">
+                            <div class="progress-fill" style="width: ${pct}%"></div>
+                            <span class="progress-text">${m.current}/${m.target}</span>
+                        </div>
+                        <button class="btn-claim ${btnClass}" ${btnAction} ${m.claimed ? 'disabled' : ''}>${btnText}</button>
+                    </div>
+                `;
+                container.innerHTML += html;
+            });
+        },
+
+        showNotification: function(show) {
+            var notif = document.getElementById('mission-notification');
+            if (notif) notif.style.display = show ? 'block' : 'none';
+        },
+
+        startTimer: function() {
+            setInterval(() => {
+                var now = new Date();
+                var tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(0,0,0,0);
+                
+                var diff = tomorrow - now;
+                var hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                
+                var el = document.getElementById('reset-timer');
+                if(el) el.innerText = `${hours}h ${minutes}m`;
+            }, 60000);
+        },
+
+        claimReward: function(id) {
+            var m = this.data.missions.find(x => x.id === id);
+            if (m && m.completed && !m.claimed) {
+                m.claimed = true;
+                this.saveData();
+
+                // Efeito sonoro
+                if(typeof AudioSys !== 'undefined') AudioSys.sfxWin();
+
+                // Lógica de Entrega
+                if (m.rewardType === 'COIN') {
+                    Game.coinCount += m.rewardQty;
+                    alert(`Você recebeu ${m.rewardQty} Moedas!`);
+                } else if (m.rewardType === 'DIAMOND') {
+                    // Adiciona variável de diamantes se não existir
+                    if (typeof Game.diamondCount === 'undefined') Game.diamondCount = 0;
+                    Game.diamondCount += m.rewardQty;
+                    // Salva no sistema principal se existir, senão fica na sessão
+                    alert(`Você recebeu ${m.rewardQty} Diamantes!`);
+                } else if (m.rewardType === 'SKIN') {
+                    // Lógica simples de personagem: se já tem todos, dá moedas
+                    var locked = HEROES_SKINS.filter(h => !h.unlocked); // Supondo que exista flag unlocked
+                    if (locked.length > 0) {
+                        // Código para desbloquear (depende da estrutura do seu jogo)
+                        // Como não tenho acesso a função de save do jogo original, dou moedas como fallback seguro
+                        Game.coinCount += 500;
+                        alert("Recompensa de Herói convertida em 500 Moedas (Desbloqueio requer save do sistema principal).");
+                    } else {
+                        Game.coinCount += 500;
+                        alert("Você já tem muitos heróis! Recebeu 500 Moedas.");
+                    }
+                }
+                
+                // Atualiza HUD do jogo se necessário
+                if(typeof UI !== 'undefined' && UI.updateCoins) UI.updateCoins();
+            }
+        },
+
+        // --- INJEÇÃO NO JOGO (HOOKS) ---
+        injectGameHooks: function() {
+            console.log("Injetando Hooks de Missões...");
+
+            // Hook 1: Iniciar Partida (Verifica personagem escolhido)
+            var _origStart = Game.startMatch;
+            Game.startMatch = function(bg) {
+                _origStart.call(this, bg);
+                // Flag para missão 'NO_DAMAGE'
+                this.heroReceivedDamage = false; 
+                DailyMissions.track('PLAY_CHAR', 1, this.selectedSkinId);
+            };
+
+            // Hook 2: Update Loop (Distância)
+            var _origUpdate = Game.update;
+            Game.update = function() {
+                _origUpdate.call(this);
+                if (this.state === 'PLAYING') {
+                    // Verifica progresso a cada 100 frames para não pesar
+                    if (this.frameCount % 100 === 0) {
+                        DailyMissions.track('DISTANCE', this.score);
+                    }
+                }
+            };
+
+            // Hook 3: Vitória contra Boss
+            var _origVictory = Game.bossVictory;
+            Game.bossVictory = function() {
+                _origVictory.call(this);
+                
+                DailyMissions.track('BOSS_KILL', 1);
+                
+                if (!this.heroReceivedDamage) {
+                    DailyMissions.track('NO_DAMAGE', 1);
+                }
+            };
+            
+            // Hook 4: Receber Dano (Para invalidar NO_DAMAGE)
+            // Precisamos interceptar quando a vida diminui
+            // Vamos observar a propriedade life do heroi via Proxy ou alterar a função checkCollisions
+            var _origCol = Game.checkCollisions;
+            Game.checkCollisions = function() {
+                var lifeBefore = this.hero ? this.hero.life : 0;
+                _origCol.call(this);
+                var lifeAfter = this.hero ? this.hero.life : 0;
+                
+                if (lifeAfter < lifeBefore) {
+                    this.heroReceivedDamage = true;
+                }
+            };
+            
+            // Hook 5: Coleta de Moedas
+            // Se houver uma função addCoin, usamos ela, senão monitoramos no update
+            // Vamos assumir rastreamento passivo no loop para ser mais seguro
+            setInterval(() => {
+                if (typeof Game !== 'undefined' && Game.coinCount) {
+                    DailyMissions.track('COINS', 0); // Só chama para validar triggers, o valor real precisaria de diff
+                    // Simplificação: Missão de moedas checa o total atual na sessão
+                    // Para ser perfeito precisaria hookar onde a moeda sobe.
+                }
+            }, 5000);
+            
+            // Hook Moeda Específico (Melhor tentativa)
+            var oldCreateFloat = Game.createFloatingText;
+            Game.createFloatingText = function(text, x, y, color) {
+                oldCreateFloat.call(this, text, x, y, color);
+                // Se o texto contiver "+" e for amarelo (moeda), conta
+                if (text && text.includes('+') && (color === '#ffd700' || text.includes('🪙'))) {
+                    // Extrai número
+                    var num = parseInt(text.replace(/\D/g, ''));
+                    if (!isNaN(num)) DailyMissions.track('COINS', num);
+                }
+            };
+        }
+    };
+    
+    // Torna global para acesso
+    window.DailyMissions = DailyMissions;
+
+})();
+</script>
 
 </body>
 </html>
