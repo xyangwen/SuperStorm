@@ -2103,6 +2103,1000 @@ window.onload = () => Game.init();
     console.log("Correção de imagens aplicada com sucesso.");
 })();
 </script>
+<script>
+/**
+ * PATCH: ATUALIZAÇÃO DE EVENTO DE CHEFE (A CADA 200 METROS)
+ * Adicione este script antes de </body> para sobrescrever a lógica original.
+ */
+(function() {
+    // Aguarda o objeto Game estar disponível para aplicar a correção
+    var patchInterval = setInterval(function() {
+        if (typeof Game !== 'undefined') {
+            clearInterval(patchInterval);
+            applyBossPatch();
+        }
+    }, 100);
+
+    function applyBossPatch() {
+        console.log("Aplicando patch de Boss a cada 200m...");
+
+        // 1. Sobrescreve o início da partida para definir o primeiro chefe em 200m
+        var originalStartMatch = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            // Executa a função original para resetar tudo
+            originalStartMatch.call(this, bgUrl);
+            
+            // FORÇA o primeiro chefe para 200m (Original era 500)
+            this.nextBossScore = 200; 
+            console.log("Primeiro chefe definido para: " + this.nextBossScore + "m");
+        };
+
+        // 2. Sobrescreve a vitória para somar apenas 200m para o próximo
+        Game.bossVictory = function() {
+            this.state = 'BOSS_VICTORY';
+            AudioSys.sfxWin();
+            
+            // Esconde UI do chefe
+            var bossLayer = document.getElementById('boss-layer');
+            if(bossLayer) bossLayer.style.display = 'none';
+            document.getElementById('boss-hud').style.display = 'none';
+            
+            this.projectiles = [];
+            
+            // Recompensas
+            this.coinCount += 50;
+            this.hero.life = 100;
+            this.createFloatingText("+50 🪙", this.canvas.width/2, this.canvas.height/2 - 50);
+            
+            // Texto Visual de Vitória
+            var vicText = document.createElement('div');
+            vicText.className = 'battle-victory-text';
+            vicText.innerHTML = "VENCEU!";
+            document.body.appendChild(vicText);
+            
+            var self = this;
+            setTimeout(function() {
+                if(vicText) vicText.remove();
+                self.state = 'PLAYING';
+                
+                // --- AQUI ESTÁ A MUDANÇA (500 -> 200) ---
+                if (self.nextBossScore < 10000) {
+                     self.nextBossScore += 200; // Mudado de 500 para 200
+                     console.log("Próximo chefe agendado para: " + self.nextBossScore + "m");
+                } else {
+                     self.nextBossScore = Infinity; 
+                }
+                // ----------------------------------------
+                
+            }, 2500);
+        };
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH: MODO FRENÉTICO (v1.0)
+ * Adiciona botão de novo modo, aumenta velocidade e frequência de chefes.
+ */
+(function() {
+    // Aguarda o carregamento completo para garantir que o objeto Game e o DOM existam
+    var freneticInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && document.getElementById('menu-screen')) {
+            clearInterval(freneticInterval);
+            initFreneticMode();
+        }
+    }, 200);
+
+    function initFreneticMode() {
+        console.log("Inicializando Patch: Modo Frenético...");
+
+        // 1. ESTADO DO MODO DE JOGO
+        Game.activeMode = 'NORMAL'; // Padrão
+
+        Game.setMode = function(mode) {
+            this.activeMode = mode;
+            console.log("Modo de jogo definido para: " + mode);
+        };
+
+        // 2. MODIFICAR A UI (MENU PRINCIPAL)
+        var menuContainer = document.querySelector('#menu-screen .selection-container');
+        var originalPlayBtn = document.querySelector('button[onclick="UI.showHeroSelect()"]');
+        
+        if (originalPlayBtn && menuContainer) {
+            // Ajusta o botão original para ser o modo Normal
+            originalPlayBtn.setAttribute('onclick', "Game.setMode('NORMAL'); UI.showHeroSelect()");
+            originalPlayBtn.innerHTML = "🚀 MODO NORMAL";
+
+            // Cria o botão do Modo Frenético
+            var freneticBtn = document.createElement('button');
+            freneticBtn.className = 'btn';
+            freneticBtn.innerHTML = "🔥 MODO FRENÉTICO";
+            freneticBtn.style.borderColor = "#ff3333";
+            freneticBtn.style.color = "#ffdddd";
+            freneticBtn.style.boxShadow = "0 0 15px rgba(255, 0, 0, 0.4)";
+            
+            freneticBtn.onclick = function() {
+                AudioSys.sfxClick();
+                Game.setMode('FRENETIC');
+                UI.showHeroSelect();
+            };
+
+            // Insere o botão logo abaixo do botão de jogar normal
+            originalPlayBtn.parentNode.insertBefore(freneticBtn, originalPlayBtn.nextSibling);
+        }
+
+        // 3. OVERRIDE: START MATCH (Configuração Inicial)
+        var _originalStart = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            _originalStart.call(this, bgUrl);
+
+            if (this.activeMode === 'FRENETIC') {
+                // Começa com chefe logo aos 50m
+                this.nextBossScore = 50;
+                // Exibe aviso visual
+                this.createFloatingText("🔥 MODO FRENÉTICO! 🔥", this.canvas.width/2, this.canvas.height/2);
+            }
+        };
+
+        // 4. OVERRIDE: VELOCIDADE (Interceptador)
+        // Usamos defineProperty para interceptar quando o jogo tenta definir a velocidade
+        // e aumentamos ela se estiver no modo frenético, sem precisar reescrever a função update inteira.
+        var _internalSpeed = 8;
+        Object.defineProperty(Game, 'gameSpeed', {
+            get: function() { 
+                return _internalSpeed; 
+            },
+            set: function(value) {
+                if (Game.activeMode === 'FRENETIC') {
+                    // Aumenta a velocidade em 50% e adiciona um valor base maior
+                    _internalSpeed = (value * 1.5) + 2; 
+                } else {
+                    _internalSpeed = value;
+                }
+            }
+        });
+
+        // 5. OVERRIDE: LÓGICA DE VITÓRIA DO CHEFE (Boss Loop)
+        // Precisamos reescrever esta função para alterar o intervalo do próximo chefe
+        Game.bossVictory = function() {
+            this.state = 'BOSS_VICTORY';
+            AudioSys.sfxWin();
+            
+            // Esconde UI do chefe
+            var bossLayer = document.getElementById('boss-layer');
+            if(bossLayer) bossLayer.style.display = 'none';
+            document.getElementById('boss-hud').style.display = 'none';
+            
+            this.projectiles = [];
+            
+            // Recompensas (Bonus maior no frenético)
+            var coinBonus = (this.activeMode === 'FRENETIC') ? 100 : 50;
+            this.coinCount += coinBonus;
+            this.hero.life = 100; // Restaura vida
+            
+            this.createFloatingText("+" + coinBonus + " 🪙", this.canvas.width/2, this.canvas.height/2 - 50);
+            
+            // Texto Visual
+            var vicText = document.createElement('div');
+            vicText.className = 'battle-victory-text';
+            vicText.innerHTML = (this.activeMode === 'FRENETIC') ? "DESTRUÍDO!" : "VENCEU!";
+            if (this.activeMode === 'FRENETIC') vicText.style.color = "#ff3333";
+            document.body.appendChild(vicText);
+            
+            var self = this;
+            setTimeout(function() {
+                if(vicText) vicText.remove();
+                self.state = 'PLAYING';
+                
+                // --- LÓGICA DE PRÓXIMO CHEFE ---
+                if (self.activeMode === 'FRENETIC') {
+                    // MODO FRENÉTICO: Chefe a cada 50 metros
+                    self.nextBossScore += 50;
+                    console.log("[FRENÉTICO] Próximo chefe em: " + self.nextBossScore + "m");
+                } else {
+                    // MODO NORMAL: Chefe a cada 200 metros (mantendo seu patch anterior)
+                    if (self.nextBossScore < 10000) {
+                        self.nextBossScore += 200;
+                    } else {
+                        self.nextBossScore = Infinity;
+                    }
+                }
+                // -------------------------------
+                
+            }, 2000); // Retorno um pouco mais rápido ao jogo (2s)
+        };
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH: SISTEMA DE EVENTOS (v1.0)
+ * Adiciona tela de eventos, botão no menu e auto-exibição ao iniciar.
+ */
+(function() {
+    var checkGameReady = setInterval(function() {
+        if (document.getElementById('menu-screen')) {
+            clearInterval(checkGameReady);
+            initEventsSystem();
+        }
+    }, 100);
+
+    function initEventsSystem() {
+        console.log("Inicializando Patch: Sistema de Eventos...");
+
+        // 1. INJETAR CSS DOS EVENTOS
+        var style = document.createElement('style');
+        style.innerHTML = `
+            #events-screen {
+                background: url('https://i.pinimg.com/736x/ee/34/60/ee34602523edd7e212ca1d98051295b1.jpg') no-repeat center center;
+                background-size: cover;
+                z-index: 200; /* Acima de tudo */
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                padding-top: 20px;
+            }
+            .events-overlay {
+                position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: -1;
+            }
+            .events-header {
+                font-size: 2.5rem; color: #ffd700; text-transform: uppercase;
+                text-shadow: 0 0 15px #ffd700; margin-bottom: 5px;
+                animation: pulseText 2s infinite;
+            }
+            .events-sub {
+                color: #aaa; letter-spacing: 2px; font-size: 0.8rem; margin-bottom: 30px;
+            }
+            .events-list {
+                width: 90%; max-width: 500px; max-height: 60vh;
+                overflow-y: auto; padding: 10px;
+                display: flex; flex-direction: column; gap: 20px;
+            }
+            .event-card {
+                background: rgba(20, 20, 30, 0.9);
+                border: 2px solid #555; border-radius: 10px;
+                overflow: hidden; position: relative;
+                transition: transform 0.2s;
+            }
+            .event-card:hover { border-color: #00eaff; transform: scale(1.02); }
+            .event-img {
+                width: 100%; height: 140px; object-fit: cover;
+                border-bottom: 1px solid #555;
+            }
+            .event-info { padding: 15px; text-align: left; }
+            .event-title { color: #fff; font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+            .event-status { 
+                background: #333; color: #aaa; padding: 3px 8px; 
+                font-size: 0.7rem; border-radius: 4px; display: inline-block; 
+            }
+            .event-status.active { background: #00aa00; color: #fff; }
+            .event-btn {
+                margin-top: 10px; width: 100%; padding: 10px;
+                background: linear-gradient(90deg, #444, #222);
+                border: none; color: #777; cursor: not-allowed;
+                font-family: 'Orbitron', sans-serif; text-transform: uppercase;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 2. CRIAR HTML DA TELA DE EVENTOS
+        var eventsDiv = document.createElement('div');
+        eventsDiv.id = 'events-screen';
+        eventsDiv.className = 'screen hidden';
+        eventsDiv.innerHTML = `
+            <div class="events-overlay"></div>
+            <h1 class="events-header">Eventos</h1>
+            <div class="events-sub">DESAFIOS SAZONAIS & RECOMPENSAS</div>
+            
+            <div class="events-list">
+                <div class="event-card">
+                    <img class="event-img" src="https://cinepop.com.br/wp-content/uploads/2025/11/vingadoresdoomsday.webp">
+                    <div class="event-info">
+                        <div class="event-title">DESTINO FINAL</div>
+                        <div class="event-status">🔒 EM BREVE</div>
+                        <p style="color:#888; font-size:0.8rem; margin:8px 0;">Enfrente a ameaça suprema em um mapa apocalíptico.</p>
+                        <button class="event-btn">Aguarde</button>
+                    </div>
+                </div>
+
+                <div class="event-card">
+                    <img class="event-img" src="https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2353060/61fb8243de81a1041b19e11fae599f2b22327443/capsule_616x353.jpg?t=1767817992">
+                    <div class="event-info">
+                        <div class="event-title">INVENCÍVEL VS.</div>
+                        <div class="event-status">🔒 EM BREVE</div>
+                        <p style="color:#888; font-size:0.8rem; margin:8px 0;">Teste sua força contra os viltrumitas.</p>
+                        <button class="event-btn">Aguarde</button>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn" onclick="closeEventsScreen()" style="margin-top: 20px; background:#333; border-color:#666; max-width: 200px;">FECHAR</button>
+        `;
+        document.getElementById('game-wrapper').appendChild(eventsDiv);
+
+        // 3. FUNÇÕES DE CONTROLE
+        window.showEventsScreen = function() {
+            UI.hideAll();
+            document.getElementById('events-screen').classList.remove('hidden');
+        };
+
+        window.closeEventsScreen = function() {
+            document.getElementById('events-screen').classList.add('hidden');
+            UI.showMenu();
+        };
+
+        // 4. ADICIONAR BOTÃO NO MENU PRINCIPAL
+        var menuContainer = document.querySelector('#menu-screen .selection-container');
+        var historyBtn = document.querySelector('button[onclick="UI.showStory()"]');
+        
+        if (menuContainer && historyBtn) {
+            var eventBtn = document.createElement('button');
+            eventBtn.className = 'btn';
+            eventBtn.innerHTML = "📅 EVENTOS";
+            eventBtn.style.borderColor = "#ffd700";
+            eventBtn.style.color = "#ffedcc";
+            eventBtn.onclick = function() {
+                AudioSys.sfxClick();
+                showEventsScreen();
+            };
+            // Insere antes do botão de História
+            historyBtn.parentNode.insertBefore(eventBtn, historyBtn);
+        }
+
+        // 5. ABRIR AUTOMATICAMENTE AO INICIAR (apenas uma vez por sessão)
+        if (!sessionStorage.getItem('eventsSeen')) {
+            setTimeout(function() {
+                showEventsScreen();
+                sessionStorage.setItem('eventsSeen', 'true');
+            }, 1000); // Pequeno delay para garantir carregamento
+        }
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH: PACOTE VILTRUMITA & COMEMORAÇÃO RARA (v1.0)
+ * Adiciona Omni-Man e Invencível com lógica de vitória customizada.
+ */
+(function() {
+    // Aguarda o carregamento dos dados principais
+    var charPatchInterval = setInterval(function() {
+        if (typeof HEROES_SKINS !== 'undefined' && typeof Game !== 'undefined') {
+            clearInterval(charPatchInterval);
+            applyInvinciblePatch();
+        }
+    }, 200);
+
+    function applyInvinciblePatch() {
+        console.log("Aplicando Patch: Personagens Invincible...");
+
+        // 1. ADICIONAR NOVOS HERÓIS NA LISTA
+        // Usamos price: 999999 para garantir que fiquem bloqueados (simulando "Somente Evento")
+        // Adicionamos a propriedade customizada 'rareGif' para usar na lógica de vitória
+        
+        var omniMan = { 
+            id: 'omni-man', 
+            baseId: 'viltrum', 
+            name: 'Omni-Man', 
+            icon: 'https://i.pinimg.com/736x/4f/33/78/4f3378c84943dab532945cbd95ce8157.jpg', 
+            introGif: 'https://www.fightersgeneration.com/news2024/char3/omni-man-invincible-earth.gif', 
+            gameGif: 'https://media.tenor.com/Yeo26asDCf8AAAAj/invincible-omni-man.gif', 
+            quote: "Tenha dó deles, mas não os valorize mais que sua espécie.", 
+            price: 999999, 
+            color: '#b30000', 
+            flip: false, 
+            isBase: true, 
+            effects: 'energy',
+            rareGif: 'https://media1.giphy.com/media/v1.Y2lkPTgyYTE0OTNiOW1sYWVxdHg2cjBobG9pN2s3cHdjZGIyNXB0Nm9lemU2cXdvazYzeSZlcD12MV9zdGlja2Vyc19yZWxhdGVkJmN0PXRz/uXE1EgOEUNvDtIPHFJ/100.webp'
+        };
+
+        var invincible = { 
+            id: 'invencivel', 
+            baseId: 'viltrum', 
+            name: 'Invencível', 
+            icon: 'https://i.pinimg.com/736x/8c/7f/73/8c7f73df52ac137f1ffd4b16518902c0.jpg', 
+            introGif: 'https://i.pinimg.com/originals/d6/05/db/d605dbf10862f5ccbfdc6242e8a150ca.gif', 
+            gameGif: 'https://media2.giphy.com/media/v1.Y2lkPTgyYTE0OTNiemExcmpyYWgybHZsdjdqbzA3MGY4MndlbXBleW51OGh3dnF5YmFxYSZlcD12MV9zdGlja2Vyc19yZWxhdGVkJmN0PXM/5zDAXIboXHtOyrmlxC/200w.webp', 
+            quote: "Eu sou... INVENCÍVEL!", 
+            price: 999999, 
+            color: '#ffd700', 
+            flip: false, 
+            rareGif: 'https://media1.giphy.com/media/v1.Y2lkPTgyYTE0OTNiOW1sYWVxdHg2cjBobG9pN2s3cHdjZGIyNXB0Nm9lemU2cXdvazYzeSZlcD12MV9zdGlja2Vyc19yZWxhdGVkJmN0PXRz/uXE1EgOEUNvDtIPHFJ/100.webp'
+        };
+
+        HEROES_SKINS.push(omniMan);
+        HEROES_SKINS.push(invincible);
+
+        // 2. ATUALIZAR UI DO MENU DE HERÓIS (Apenas visual para mostrar "EVENTO")
+        // Interceptamos a renderização para trocar o preço 999999 por "EVENTO"
+        var originalShowHero = UI.showHeroSelect;
+        UI.showHeroSelect = function() {
+            originalShowHero.apply(this);
+            // Pequeno delay para manipular o DOM recém-criado
+            setTimeout(function() {
+                var cards = document.querySelectorAll('.hero-card');
+                cards.forEach(function(card) {
+                    if(card.innerHTML.includes('999999')) {
+                        card.innerHTML = card.innerHTML.replace('999999', 'EVENTO');
+                        card.style.borderColor = "#ff3333"; // Borda vermelha para eventos
+                    }
+                });
+            }, 50);
+        };
+        
+        var originalShowSkin = UI.showSkinSelect;
+        UI.showSkinSelect = function(baseId) {
+            originalShowSkin.apply(this, [baseId]);
+            setTimeout(function() {
+                var cards = document.querySelectorAll('#skin-list-container .hero-card');
+                cards.forEach(function(card) {
+                    if(card.innerHTML.includes('999999')) {
+                        card.innerHTML = card.innerHTML.replace('999999', 'EVENTO');
+                        card.style.borderColor = "#ff3333";
+                    }
+                });
+            }, 50);
+        }
+
+        // 3. LÓGICA DE COMEMORAÇÃO RARA
+        // Salva a função de vitória atual (que pode ser a do patch Frenético ou a original)
+        var previousBossVictory = Game.bossVictory;
+
+        Game.bossVictory = function() {
+            // Executa a lógica padrão primeiro (dar moedas, restaurar vida, criar texto)
+            previousBossVictory.apply(this);
+
+            // Verifica se o herói atual é Omni-Man ou Invencível
+            var currentHero = this.getHeroData(this.selectedSkinId);
+            
+            if (currentHero && (currentHero.id === 'omni-man' || currentHero.id === 'invencivel')) {
+                // Busca o elemento de texto que acabou de ser criado
+                var victoryTextEl = document.querySelector('.battle-victory-text');
+                
+                if (victoryTextEl && currentHero.rareGif) {
+                    // Substitui o texto pelo GIF
+                    victoryTextEl.innerHTML = ''; // Limpa "VENCEU" ou "DESTRUÍDO"
+                    victoryTextEl.style.textShadow = 'none';
+                    victoryTextEl.style.animation = 'popIn 0.5s forwards';
+                    
+                    var img = document.createElement('img');
+                    img.src = currentHero.rareGif;
+                    img.style.width = '250px';
+                    img.style.height = 'auto';
+                    img.style.borderRadius = '15px';
+                    img.style.border = '3px solid ' + currentHero.color;
+                    img.style.boxShadow = '0 0 30px ' + currentHero.color;
+                    
+                    victoryTextEl.appendChild(img);
+                }
+            }
+        };
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH: ATUALIZAÇÃO DE EVENTO "INVENCÍVEL GO!" (v2.0)
+ * Substitui o sistema de eventos anterior, adiciona persistência de dados
+ * e lógica de recompensas com barra de progresso.
+ */
+(function() {
+    // Aguarda o carregamento do patch de eventos anterior (v1.0) para sobrescrevê-lo
+    var eventPatchInterval = setInterval(function() {
+        if (typeof window.showEventsScreen !== 'undefined' && document.getElementById('events-screen')) {
+            clearInterval(eventPatchInterval);
+            initInvincibleGoEvent();
+        }
+    }, 500);
+
+    function initInvincibleGoEvent() {
+        console.log("Inicializando Patch: Evento Invencível GO!...");
+
+        // 1. GERENCIAMENTO DE DADOS (Persistência)
+        function getEventData() {
+            var data = localStorage.getItem('SuperSky_Event_Invincible');
+            return data ? JSON.parse(data) : { omniFrenetic: 0, omniNormal: 0, claimed: false };
+        }
+
+        function saveEventData(data) {
+            localStorage.setItem('SuperSky_Event_Invincible', JSON.stringify(data));
+        }
+
+        // 2. CSS CUSTOMIZADO PARA O NOVO CARD
+        var style = document.createElement('style');
+        style.innerHTML = `
+            .inv-card {
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                border: 2px solid #ffd700;
+                box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+                border-radius: 12px;
+                overflow: hidden;
+                font-family: 'Rajdhani', sans-serif;
+                margin-bottom: 20px;
+            }
+            .inv-header-img {
+                width: 100%;
+                height: 160px;
+                object-fit: cover;
+                border-bottom: 3px solid #ffd700;
+            }
+            .inv-content { padding: 15px; }
+            .inv-title {
+                color: #ffd700; font-size: 1.5rem; font-weight: 900;
+                text-transform: uppercase; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+                margin-bottom: 10px; text-align: center;
+            }
+            .inv-objective {
+                margin: 10px 0;
+                background: rgba(0,0,0,0.4);
+                padding: 8px;
+                border-radius: 5px;
+            }
+            .inv-label { color: #fff; font-size: 0.9rem; display: flex; justify-content: space-between; margin-bottom: 5px; }
+            .progress-bg {
+                width: 100%; height: 10px; background: #333; border-radius: 5px; overflow: hidden;
+                border: 1px solid #555;
+            }
+            .progress-fill {
+                height: 100%; background: linear-gradient(90deg, #ff0000, #ff8800);
+                transition: width 0.5s ease-out;
+            }
+            .inv-rewards {
+                display: flex; justify-content: center; align-items: center; gap: 15px;
+                margin: 15px 0; background: rgba(255, 215, 0, 0.1); padding: 10px; border-radius: 8px;
+            }
+            .reward-item { text-align: center; position: relative; }
+            .reward-img { width: 50px; height: 50px; border: 2px solid #fff; border-radius: 5px; object-fit: cover; }
+            .reward-lock { 
+                position: absolute; top:0; left:0; width:100%; height:100%; 
+                background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
+                font-size: 1.2rem; color: #fff;
+            }
+            .inv-btn-group { display: flex; gap: 10px; margin-top: 15px; }
+            .inv-btn {
+                flex: 1; padding: 10px; border: none; color: #fff; font-weight: bold;
+                text-transform: uppercase; cursor: pointer; border-radius: 4px;
+                font-family: 'Orbitron', sans-serif; font-size: 0.8rem;
+            }
+            .btn-play { background: #0055ff; border: 1px solid #00eaff; }
+            .btn-play-frenetic { background: #aa0000; border: 1px solid #ff3333; }
+            .btn-claim { 
+                width: 100%; background: linear-gradient(90deg, #ffd700, #ffaa00); 
+                color: #000; font-size: 1.1rem; margin-top: 10px;
+                text-shadow: none; box-shadow: 0 0 15px gold;
+            }
+            .btn-claim:disabled { filter: grayscale(1); cursor: default; box-shadow: none; opacity: 0.7; }
+        `;
+        document.head.appendChild(style);
+
+        // 3. OVERRIDE DA TELA DE EVENTOS
+        // Sobrescrevemos a função window.showEventsScreen para renderizar nosso novo layout dinâmico
+        var originalShowEvents = window.showEventsScreen;
+        
+        window.showEventsScreen = function() {
+            // Chamamos a original para garantir que a div fique visível
+            UI.hideAll();
+            var screen = document.getElementById('events-screen');
+            screen.classList.remove('hidden');
+
+            var eventData = getEventData();
+            
+            // Metas
+            var goalFrenetic = 5;
+            var goalNormal = 2;
+            
+            // Cálculos de Porcentagem
+            var pctFrenetic = Math.min(100, (eventData.omniFrenetic / goalFrenetic) * 100);
+            var pctNormal = Math.min(100, (eventData.omniNormal / goalNormal) * 100);
+            var isCompleted = (eventData.omniFrenetic >= goalFrenetic) && (eventData.omniNormal >= goalNormal);
+            
+            // Busca imagens dos heróis (Omni-man e Invencivel) que foram adicionados no Patch anterior
+            var omniObj = HEROES_SKINS.find(h => h.id === 'omni-man') || { icon: '' };
+            var invObj = HEROES_SKINS.find(h => h.id === 'invencivel') || { icon: '' };
+
+            var listContainer = document.querySelector('.events-list');
+            
+            // HTML DO CARD
+            var html = `
+                <div class="inv-card">
+                    <img src="https://xboxwire.thesourcemediaassets.com/sites/8/2025/06/Invincible-5672cb0ed866f8bedbbe.jpg" class="inv-header-img">
+                    <div class="inv-content">
+                        <div class="inv-title">Evento Invencível!</div>
+                        
+                        <div class="inv-objective">
+                            <div class="inv-label">
+                                <span>⚔️ Derrote Omni-Man (Frenético)</span>
+                                <span style="color:${pctFrenetic >= 100 ? '#00ff00' : '#fff'}">${eventData.omniFrenetic}/${goalFrenetic}</span>
+                            </div>
+                            <div class="progress-bg">
+                                <div class="progress-fill" style="width: ${pctFrenetic}%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="inv-objective">
+                            <div class="inv-label">
+                                <span>👊 Derrote Omni-Man (Normal)</span>
+                                <span style="color:${pctNormal >= 100 ? '#00ff00' : '#fff'}">${eventData.omniNormal}/${goalNormal}</span>
+                            </div>
+                            <div class="progress-bg">
+                                <div class="progress-fill" style="width: ${pctNormal}%; background: linear-gradient(90deg, #0055ff, #00eaff);"></div>
+                            </div>
+                        </div>
+
+                        <div class="inv-rewards">
+                            <div class="reward-item">
+                                <img src="${omniObj.gameGif || omniObj.icon}" class="reward-img">
+                                ${!eventData.claimed ? '<div class="reward-lock">🔒</div>' : ''}
+                                <div style="font-size:0.7rem; color:#aaa;">Omni-Man</div>
+                            </div>
+                            <div style="font-size:1.5rem; color:#ffd700;">+</div>
+                            <div class="reward-item">
+                                <img src="${invObj.gameGif || invObj.icon}" class="reward-img">
+                                ${!eventData.claimed ? '<div class="reward-lock">🔒</div>' : ''}
+                                <div style="font-size:0.7rem; color:#aaa;">Invencível</div>
+                            </div>
+                            <div style="font-size:1.5rem; color:#ffd700;">+</div>
+                            <div class="reward-item">
+                                <div class="reward-img" style="display:flex; align-items:center; justify-content:center; background:#222; border-color:#ffd700; color:#ffd700; font-weight:bold;">500</div>
+                                ${!eventData.claimed ? '<div class="reward-lock">🔒</div>' : ''}
+                                <div style="font-size:0.7rem; color:#aaa;">Moedas</div>
+                            </div>
+                        </div>
+
+                        ${isCompleted && !eventData.claimed ? 
+                            `<button class="inv-btn btn-claim" onclick="window.claimInvincibleReward()">🎁 RESGATAR RECOMPENSAS</button>` : 
+                            (eventData.claimed ? 
+                                `<button class="inv-btn btn-claim" disabled>✅ RECOMPENSA COLETADA</button>` : 
+                                `<button class="inv-btn btn-claim" disabled>🔒 COMPLETE PARA RESGATAR</button>`
+                            )
+                        }
+
+                        <div class="inv-btn-group">
+                            <button class="inv-btn btn-play" onclick="window.playEventMode('NORMAL')">Jogar Normal</button>
+                            <button class="inv-btn btn-play-frenetic" onclick="window.playEventMode('FRENETIC')">Jogar Frenético</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Substitui todo o conteúdo antigo da lista de eventos
+            listContainer.innerHTML = html;
+        };
+
+        // 4. LÓGICA DE JOGO E MONITORAMENTO DE PROGRESSO
+        
+        // Funções globais para os botões do HTML injetado
+        window.playEventMode = function(mode) {
+            AudioSys.sfxClick();
+            document.getElementById('events-screen').classList.add('hidden');
+            Game.setMode(mode);
+            Game.selectScenarioAndStart();
+        };
+
+        window.claimInvincibleReward = function() {
+            var data = getEventData();
+            if (data.claimed) return;
+
+            AudioSys.sfxWin();
+            
+            // Adiciona Moedas
+            PlayerData.coins += 500;
+            
+            // Desbloqueia Omni-Man e Invencível
+            if (!PlayerData.unlocked.includes('omni-man')) PlayerData.unlocked.push('omni-man');
+            if (!PlayerData.unlocked.includes('invencivel')) PlayerData.unlocked.push('invencivel');
+            
+            // Salva Global
+            localStorage.setItem('SuperSkySave', JSON.stringify(PlayerData));
+            
+            // Salva Evento
+            data.claimed = true;
+            saveEventData(data);
+            
+            // Atualiza UI
+            alert("PARABÉNS! Você desbloqueou Omni-Man, Invencível e ganhou 500 Moedas!");
+            window.showEventsScreen(); // Recarrega para mostrar status coletado
+            UI.updateStats(); // Atualiza contador de moedas no topo (se visível)
+        };
+
+        // Intercepta a vitória do Chefe para contar o progresso
+        var previousVictoryLogic = Game.bossVictory;
+        
+        Game.bossVictory = function() {
+            // Executa a lógica original (vitória, moedas, texto, etc)
+            previousVictoryLogic.apply(this);
+            
+            // Lógica do Evento
+            if (this.boss && this.boss.data && this.boss.data.id === 'omni-man') {
+                var data = getEventData();
+                var mode = this.activeMode || 'NORMAL';
+                
+                var updated = false;
+                if (mode === 'FRENETIC') {
+                    if (data.omniFrenetic < 5) {
+                        data.omniFrenetic++;
+                        updated = true;
+                        this.createFloatingText("EVENTO: 1/5 (Frenético)", this.canvas.width/2, this.canvas.height/2 + 50);
+                    }
+                } else {
+                    if (data.omniNormal < 2) {
+                        data.omniNormal++;
+                        updated = true;
+                        this.createFloatingText("EVENTO: 1/2 (Normal)", this.canvas.width/2, this.canvas.height/2 + 50);
+                    }
+                }
+                
+                if (updated) {
+                    saveEventData(data);
+                    console.log("Progresso do Evento Invencível Atualizado:", data);
+                }
+            }
+        };
+
+        // 5. ATUALIZAR LISTA DE CENÁRIOS PARA INCLUIR IMAGEM DO EVENTO (Opcional, apenas estético)
+        // Não alteramos o SCENARIOS original para não quebrar índices, mas a UI já usa a imagem no card.
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH v3.0: EVENTO "INVENCÍVEL GO!" - VISUAL DELUXE
+ * - Atualiza as recompensas para mostrar ÍCONES em vez de Sprites.
+ * - Adiciona animações CSS, brilhos e efeitos dinâmicos.
+ */
+(function() {
+    // Garante que o patch rode após o carregamento do jogo
+    var patchV3Interval = setInterval(function() {
+        if (typeof window.showEventsScreen !== 'undefined' && document.getElementById('events-screen')) {
+            clearInterval(patchV3Interval);
+            initInvincibleV3();
+        }
+    }, 600);
+
+    function initInvincibleV3() {
+        console.log("Aplicando Patch Visual v3.0: Invencível GO! (Ícones + Animações)...");
+
+        // 1. DADOS (Mantém a persistência do patch anterior)
+        function getEventData() {
+            var data = localStorage.getItem('SuperSky_Event_Invincible');
+            return data ? JSON.parse(data) : { omniFrenetic: 0, omniNormal: 0, claimed: false };
+        }
+
+        // 2. CSS AVANÇADO (Animações e Efeitos)
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* Animações Keyframes */
+            @keyframes borderFlow {
+                0% { border-color: #ff0000; box-shadow: 0 0 10px #ff0000; }
+                50% { border-color: #ffd700; box-shadow: 0 0 25px #ffd700, inset 0 0 10px #ffd700; }
+                100% { border-color: #ff0000; box-shadow: 0 0 10px #ff0000; }
+            }
+            @keyframes bgPulse {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+            @keyframes iconFloat {
+                0% { transform: translateY(0px) scale(1); filter: brightness(1); }
+                50% { transform: translateY(-8px) scale(1.05); filter: brightness(1.3); }
+                100% { transform: translateY(0px) scale(1); filter: brightness(1); }
+            }
+            @keyframes titleShine {
+                0% { background-position: -200%; }
+                100% { background-position: 200%; }
+            }
+
+            /* Estilos do Card v3.0 */
+            .inv-card-v3 {
+                background: linear-gradient(135deg, #0d0d1a 0%, #1a0b0b 100%);
+                border: 2px solid #ffd700;
+                border-radius: 15px;
+                overflow: hidden;
+                font-family: 'Rajdhani', sans-serif;
+                margin-bottom: 20px;
+                position: relative;
+                animation: borderFlow 3s infinite alternate;
+            }
+            
+            .inv-header-img-v3 {
+                width: 100%;
+                height: 160px;
+                object-fit: cover;
+                border-bottom: 2px solid rgba(255, 215, 0, 0.5);
+                mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+            }
+
+            .inv-content-v3 { padding: 15px; position: relative; z-index: 2; }
+
+            .inv-title-v3 {
+                font-size: 1.8rem; font-weight: 900; text-transform: uppercase;
+                text-align: center; margin-bottom: 15px;
+                background: linear-gradient(90deg, #ff0000, #ffff00, #ff0000);
+                background-size: 200% auto;
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                animation: titleShine 3s linear infinite;
+                text-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
+            }
+
+            .inv-objective-v3 {
+                margin: 12px 0;
+                background: rgba(255, 255, 255, 0.05);
+                padding: 10px; border-radius: 8px;
+                border-left: 4px solid #555;
+                transition: 0.3s;
+            }
+            .inv-objective-v3.done { border-left-color: #00ff00; background: rgba(0, 255, 0, 0.1); }
+            
+            .inv-label-v3 { color: #ddd; font-size: 0.95rem; display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: bold; }
+            
+            .progress-bg-v3 {
+                width: 100%; height: 12px; background: #222; border-radius: 6px; 
+                border: 1px solid #444; overflow: hidden; position: relative;
+            }
+            .progress-fill-v3 {
+                height: 100%; background: linear-gradient(90deg, #ff3333, #ffcc00);
+                box-shadow: 0 0 10px #ff3333;
+                transition: width 0.5s cubic-bezier(0.4, 0.0, 0.2, 1);
+            }
+
+            /* Área de Recompensas */
+            .inv-rewards-v3 {
+                display: flex; justify-content: center; align-items: center; gap: 12px;
+                margin: 20px 0; 
+                background: radial-gradient(circle, rgba(255,215,0,0.15) 0%, rgba(0,0,0,0) 70%);
+                padding: 15px 5px;
+            }
+            
+            .reward-box {
+                text-align: center; position: relative;
+                width: 70px; display: flex; flex-direction: column; align-items: center;
+                animation: iconFloat 4s ease-in-out infinite;
+            }
+            .reward-box:nth-child(2) { animation-delay: 0.5s; } /* Delay para Invencível */
+            .reward-box:nth-child(4) { animation-delay: 1s; } /* Delay para Moedas */
+
+            .reward-icon-v3 {
+                width: 60px; height: 60px; 
+                border-radius: 10px; object-fit: cover;
+                border: 2px solid #fff;
+                box-shadow: 0 0 15px rgba(255,255,255,0.3);
+            }
+            .reward-icon-omni { border-color: #b30000; box-shadow: 0 0 15px #b30000; }
+            .reward-icon-inv { border-color: #ffd700; box-shadow: 0 0 15px #ffd700; }
+            .reward-icon-coin { border-color: #00eaff; background: #000; padding: 5px; }
+
+            .reward-lock-v3 {
+                position: absolute; top: 0; left: 5px; width: 60px; height: 60px;
+                background: rgba(0,0,0,0.6); border-radius: 10px;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 1.5rem; color: #fff; backdrop-filter: blur(2px);
+            }
+            
+            .reward-name { font-size: 0.7rem; color: #aaa; margin-top: 5px; text-transform: uppercase; letter-spacing: 1px; }
+
+            /* Botões */
+            .inv-btn-v3 {
+                width: 100%; padding: 12px; border: none; font-weight: bold;
+                text-transform: uppercase; cursor: pointer; border-radius: 6px;
+                font-family: 'Orbitron', sans-serif; font-size: 0.9rem;
+                margin-top: 5px; transition: transform 0.2s;
+            }
+            .inv-btn-v3:active { transform: scale(0.96); }
+            
+            .btn-normal { background: linear-gradient(to bottom, #0055ff, #003399); color: white; border: 1px solid #00eaff; }
+            .btn-frenetic { background: linear-gradient(to bottom, #cc0000, #880000); color: white; border: 1px solid #ff5555; }
+            
+            .btn-claim-v3 { 
+                background: linear-gradient(90deg, #ffd700, #ffaa00, #ffd700); 
+                background-size: 200%; animation: bgPulse 2s linear infinite;
+                color: #000; font-size: 1.1rem; border: 2px solid #fff;
+                box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+            }
+            .btn-claim-v3:disabled { 
+                background: #333; color: #777; border-color: #555; animation: none; box-shadow: none; cursor: default; 
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 3. OVERRIDE DA TELA
+        window.showEventsScreen = function() {
+            UI.hideAll();
+            var screen = document.getElementById('events-screen');
+            screen.classList.remove('hidden');
+
+            var eventData = getEventData();
+            var goalFrenetic = 5;
+            var goalNormal = 2;
+            
+            var pctFrenetic = Math.min(100, (eventData.omniFrenetic / goalFrenetic) * 100);
+            var pctNormal = Math.min(100, (eventData.omniNormal / goalNormal) * 100);
+            var isCompleted = (eventData.omniFrenetic >= goalFrenetic) && (eventData.omniNormal >= goalNormal);
+            
+            // Busca dados dos heróis (garantindo que existam)
+            var omniObj = HEROES_SKINS.find(h => h.id === 'omni-man') || { icon: '' };
+            var invObj = HEROES_SKINS.find(h => h.id === 'invencivel') || { icon: '' };
+
+            var listContainer = document.querySelector('.events-list');
+            
+            // HTML V3.0
+            listContainer.innerHTML = `
+                <div class="inv-card-v3">
+                    <img src="https://xboxwire.thesourcemediaassets.com/sites/8/2025/06/Invincible-5672cb0ed866f8bedbbe.jpg" class="inv-header-img-v3">
+                    
+                    <div class="inv-content-v3">
+                        <div class="inv-title-v3">Evento Invencível!</div>
+                        
+                        <div class="inv-objective-v3 ${eventData.omniFrenetic >= goalFrenetic ? 'done' : ''}">
+                            <div class="inv-label-v3">
+                                <span>🔥 Derrote Omni-Man (Frenético)</span>
+                                <span style="color:${pctFrenetic >= 100 ? '#00ff00' : '#ff9999'}">${eventData.omniFrenetic}/${goalFrenetic}</span>
+                            </div>
+                            <div class="progress-bg-v3">
+                                <div class="progress-fill-v3" style="width: ${pctFrenetic}%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="inv-objective-v3 ${eventData.omniNormal >= goalNormal ? 'done' : ''}">
+                            <div class="inv-label-v3">
+                                <span>🛡️ Derrote Omni-Man (Normal)</span>
+                                <span style="color:${pctNormal >= 100 ? '#00ff00' : '#99ccff'}">${eventData.omniNormal}/${goalNormal}</span>
+                            </div>
+                            <div class="progress-bg-v3">
+                                <div class="progress-fill-v3" style="width: ${pctNormal}%; background: linear-gradient(90deg, #0088ff, #00eaff);"></div>
+                            </div>
+                        </div>
+
+                        <div class="inv-rewards-v3">
+                            
+                            <div class="reward-box">
+                                <img src="${omniObj.icon}" class="reward-icon-v3 reward-icon-omni">
+                                ${!eventData.claimed ? '<div class="reward-lock-v3">🔒</div>' : ''}
+                                <div class="reward-name">Omni-Man</div>
+                            </div>
+
+                            <div style="font-size:1.5rem; color:#fff; text-shadow:0 0 10px #fff;">+</div>
+
+                            <div class="reward-box">
+                                <img src="${invObj.icon}" class="reward-icon-v3 reward-icon-inv">
+                                ${!eventData.claimed ? '<div class="reward-lock-v3">🔒</div>' : ''}
+                                <div class="reward-name">Invencível</div>
+                            </div>
+
+                            <div style="font-size:1.5rem; color:#fff; text-shadow:0 0 10px #fff;">+</div>
+
+                            <div class="reward-box">
+                                <div class="reward-icon-v3 reward-icon-coin" style="display:flex; justify-content:center; align-items:center;">
+                                    <span style="font-size:1.2rem;">🪙</span>
+                                </div>
+                                ${!eventData.claimed ? '<div class="reward-lock-v3">🔒</div>' : ''}
+                                <div class="reward-name">500</div>
+                            </div>
+
+                        </div>
+
+                        ${isCompleted && !eventData.claimed ? 
+                            `<button class="inv-btn-v3 btn-claim-v3" onclick="window.claimInvincibleReward()">🎁 RESGATAR TUDO</button>` : 
+                            (eventData.claimed ? 
+                                `<button class="inv-btn-v3 btn-claim-v3" disabled style="opacity:0.6;">✅ COLETADO</button>` : 
+                                `<button class="inv-btn-v3 btn-claim-v3" disabled>🔒 BLOQUEADO</button>`
+                            )
+                        }
+
+                        <hr style="border-color:rgba(255,255,255,0.1); margin: 15px 0;">
+
+                        <div style="display: flex; gap: 10px;">
+                            <button class="inv-btn-v3 btn-normal" onclick="window.playEventMode('NORMAL')">Modo Normal</button>
+                            <button class="inv-btn-v3 btn-frenetic" onclick="window.playEventMode('FRENETIC')">Modo Frenético</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+    }
+})();
+</script>
 
 </body>
 </html>
