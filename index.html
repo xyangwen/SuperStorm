@@ -3097,6 +3097,276 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH: EXPANSÃO UCHIHA & RAVENA (v4.0)
+ * Adiciona Sasuke, Ravena e o Evento Lendas Uchiha (Itachi, Madara, Shisui).
+ */
+(function() {
+    // Aguarda o carregamento das variáveis globais do jogo
+    var newHeroesInterval = setInterval(function() {
+        if (typeof HEROES_SKINS !== 'undefined') {
+            clearInterval(newHeroesInterval);
+            injectNewHeroes();
+        }
+    }, 200);
+
+    function injectNewHeroes() {
+        console.log("Injetando pacote de heróis: Uchiha & Titans...");
+
+        var newCharacters = [
+            // --- SASUKE UCHIHA ---
+            { 
+                id: 'sasuke-susanoo', 
+                baseId: 'sasuke', 
+                name: 'Sasuke (Susano\'o)', 
+                icon: 'https://i.pinimg.com/736x/61/52/00/6152003d9a2e482c341912bf4aeb124a.jpg', 
+                introGif: 'https://media.tenor.com/f6bP8gcyJTYAAAAM/sasuke-uchiha.gif', 
+                gameGif: 'https://static.wikia.nocookie.net/animeverso/images/2/26/Def44na-a6ca3c1f-9dbf-4a8a-b435-d3705a009919.png/revision/latest?cb=20210723125742&path-prefix=pt-br', 
+                quote: "Eu sou um Vingador.", 
+                price: 500, 
+                color: '#800080', // Roxo
+                flip: false, 
+                isBase: true,
+                effects: 'thunder' 
+            },
+
+            // --- RAVENA ---
+            { 
+                id: 'ravena', 
+                baseId: 'ravena', 
+                name: 'Ravena', 
+                icon: 'https://pbs.twimg.com/media/FrOc3BLWIAAhEqI.png', 
+                introGif: 'https://i.pinimg.com/originals/b5/77/73/b577730517cb9f13ccdc1d80bc35aa05.gif', 
+                gameGif: 'https://media4.giphy.com/media/v1.Y2lkPTZjMDliOTUybDBqYzUyZmJ0eGczdTBhdmVyODl1OGR3emExcGo1eWZ6Z3hiOGIyNSZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/Hf3tglowYMdp6ikEiL/200w.webp', 
+                quote: "Azarath Metrion Zinthos!", 
+                price: 200, 
+                color: '#4b0082', // Indigo/Roxo Escuro
+                flip: false, 
+                isBase: true,
+                effects: 'energy' 
+            },
+
+            // --- ITACHI UCHIHA (EVENTO) ---
+            { 
+                id: 'itachi-susanoo', 
+                baseId: 'itachi', 
+                name: 'Itachi (Susano\'o)', 
+                icon: 'https://i.pinimg.com/736x/90/8c/7c/908c7cba9a1f2af8b8f3a0171c33771e.jpg', 
+                introGif: 'https://64.media.tumblr.com/3f871f2e1e8aa661aa070ec9efd063d8/tumblr_o5trjeMVpn1uyawcho1_1280.gif', 
+                gameGif: 'https://www.pikpng.com/pngl/b/560-5607094_image-guardian-png-fairy-tail-fanon-wiki-sasuke.png', 
+                quote: "Há coisas impossíveis, assim como me vencer.", 
+                price: 999999, // Código para "EVENTO"
+                color: '#ff4500', // Laranja avermelhado
+                flip: true, 
+                isBase: true,
+                effects: 'energy' 
+            },
+
+            // --- MADARA UCHIHA (EVENTO) ---
+            { 
+                id: 'madara-susanoo', 
+                baseId: 'madara', 
+                name: 'Madara (Lenda)', 
+                icon: 'https://i.pinimg.com/736x/3f/38/3a/3f383a1d3ac00ec284ff4bf1f9544764.jpg', 
+                introGif: 'https://giffiles.alphacoders.com/125/125475.gif', 
+                gameGif: 'https://i.pinimg.com/originals/8a/36/34/8a363482d0f05766301e19730645ffff.png', 
+                quote: "Lenda Ninja!", 
+                price: 999999, // Código para "EVENTO"
+                color: '#0000ff', // Azul Susanoo
+                flip: false, 
+                isBase: true,
+                effects: 'thunder' 
+            },
+
+            // --- SHISUI UCHIHA (EVENTO) ---
+            { 
+                id: 'shisui-susanoo', 
+                baseId: 'shisui', 
+                name: 'Shisui (Susano\'o)', 
+                icon: 'https://i.pinimg.com/736x/1b/42/69/1b4269f19108673bbe6e3d849cd876a9.jpg', 
+                introGif: 'https://media.tenor.com/ZVVbYJbpAwsAAAAM/hlvtwt-hlvgc.gif', 
+                gameGif: 'https://www.nicepng.com/png/full/149-1495207_this-is-the-susanoo-of-itachi-shisui-uchiha.png', 
+                quote: "As Vezes o Sacrifício é preciso!", 
+                price: 999999, // Código para "EVENTO"
+                color: '#00ff00', // Verde Susanoo
+                flip: false, 
+                isBase: true,
+                effects: 'energy' 
+            }
+        ];
+
+        // Adiciona à lista global
+        newCharacters.forEach(function(hero) {
+            // Verifica duplicidade para evitar erros se recarregar
+            var exists = HEROES_SKINS.some(function(h) { return h.id === hero.id; });
+            if (!exists) {
+                HEROES_SKINS.push(hero);
+            }
+        });
+
+        // Força atualização da UI se estivermos no menu de seleção
+        if (typeof UI !== 'undefined' && document.getElementById('hero-select-screen') && !document.getElementById('hero-select-screen').classList.contains('hidden')) {
+             UI.showHeroSelect();
+        }
+    }
+})();
+</script>
+<script>
+/**
+ * PATCH: PRELOADER INTERATIVO (VISUAL UPDATE)
+ * Adiciona carrossel de imagens, dicas e créditos na tela de loading.
+ * Criado para: SuperSky Storm 3D - Android Edition
+ */
+(function() {
+    // Aguarda o preloader original existir no DOM
+    var loaderInterval = setInterval(function() {
+        var overlay = document.getElementById('preloader-overlay');
+        if (overlay) {
+            clearInterval(loaderInterval);
+            initInteractiveLoader(overlay);
+        }
+    }, 50);
+
+    function initInteractiveLoader(overlay) {
+        console.log("Iniciando Preloader Interativo - Yangverse Games...");
+
+        // 1. CONFIGURAÇÃO (Imagens e Dicas)
+        var bgImages = [
+            'https://w0.peakpx.com/wallpaper/872/1008/HD-wallpaper-e3-2021-dragon-ball-z-kakarot-dlc-3-out-june-11-lords-of-gaming-dbz-kakarot.jpg',
+            'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQfM_6l7Z72MA9QRCaTa_sRHkiAF5MgOncXrGv2G_Y-8bu-p7zDI8SEDG8Z&s=10',
+            'https://media.tenor.com/Yi4htKvJJ4gAAAAM/goku-superman.gif',
+            'https://image.api.playstation.com/vulcan/ap/rnd/202512/0223/e7827d96c3892955c8dd7804ef3ef2e9e5df82425062aabf.jpg',
+            'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTkRIifkSqrd3kNQBJTdLDRSSYLj5U0zn5oyLwIVmPxzAYqMawjFvmCan9f&s=10'
+        ];
+
+        var gameTips = [
+            "💡 DICA: No Modo Frenético, chefes aparecem a cada 50 metros!",
+            "🌍 CURIOSIDADE: Existem cenários ocultos como 'Terra Sombria'.",
+            "💎 ECONOMIA: Skins 3D custam moedas, mas têm efeitos visuais únicos.",
+            "⚡ COMBATE: Toque rapidamente na tela para vencer disputas de poder.",
+            "🏆 RANKING: O recorde é salvo localmente. Tente superar a si mesmo!",
+            "🦸 PERSONAGEM: Omni-Man e Invencível aparecem apenas em eventos especiais.",
+            "🛡️ DEFESA: Colete corações ❤️ para restaurar vida durante o voo."
+        ];
+
+        // 2. INJETAR ESTILOS CSS
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* Ajuste do Overlay Original para permitir fundo */
+            #preloader-overlay {
+                background-color: transparent !important; /* Remove o fundo preto sólido original */
+                background: linear-gradient(to bottom, rgba(0,0,0,0.3), #000) !important;
+            }
+            
+            /* Container das Imagens de Fundo */
+            #loader-bg-container {
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                z-index: -1; overflow: hidden;
+            }
+            .loader-bg-img {
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                object-fit: cover; opacity: 0; transition: opacity 1s ease-in-out, transform 5s linear;
+                transform: scale(1); filter: brightness(0.6);
+            }
+            .loader-bg-img.active {
+                opacity: 1; transform: scale(1.1);
+            }
+
+            /* Container de Dicas */
+            #loader-tip-box {
+                position: absolute; bottom: 80px; width: 90%; text-align: center;
+                color: #fff; font-family: 'Rajdhani', sans-serif;
+                text-shadow: 0 2px 4px #000;
+            }
+            .loader-tip-text {
+                font-size: 1.1rem; color: #ffd700; font-weight: bold;
+                animation: slideUpFade 0.5s ease-out;
+            }
+            
+            /* Créditos */
+            #loader-credits {
+                position: absolute; bottom: 10px; width: 100%; text-align: center;
+                color: #666; font-size: 0.7rem; letter-spacing: 1px;
+                text-transform: uppercase; font-family: 'Orbitron', sans-serif;
+                z-index: 10;
+            }
+            #loader-credits span { color: #00eaff; }
+
+            /* Ajuste dos elementos originais para ficarem visíveis sobre a imagem */
+            .loader-title { text-shadow: 0 0 20px #000, 0 0 10px #00eaff; margin-top: -50px; }
+            .loader-bar-container { box-shadow: 0 0 30px #000; background: rgba(0,0,0,0.8); }
+            .loader-text { background: rgba(0,0,0,0.5); padding: 2px 10px; border-radius: 4px; }
+
+            @keyframes slideUpFade {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 3. CRIAR ESTRUTURA HTML ADICIONAL
+        
+        // Container de Imagens
+        var bgContainer = document.createElement('div');
+        bgContainer.id = 'loader-bg-container';
+        
+        // Criar elementos de imagem
+        bgImages.forEach(function(url, index) {
+            var img = document.createElement('img');
+            img.src = url;
+            img.className = 'loader-bg-img' + (index === 0 ? ' active' : '');
+            bgContainer.appendChild(img);
+        });
+        overlay.appendChild(bgContainer);
+
+        // Box de Dicas
+        var tipBox = document.createElement('div');
+        tipBox.id = 'loader-tip-box';
+        tipBox.innerHTML = `<div class="loader-tip-text">${gameTips[0]}</div>`;
+        overlay.appendChild(tipBox);
+
+        // Créditos
+        var credits = document.createElement('div');
+        credits.id = 'loader-credits';
+        credits.innerHTML = "Jogo Criado por <span>Yangwen/Yangverse Games</span>";
+        overlay.appendChild(credits);
+
+        // Mover elementos originais (barra de progresso) para frente visualmente se necessário
+        // (O Z-index do container de fundo já é -1, então a barra deve ficar em cima naturalmente)
+
+        // 4. LÓGICA DE ROTAÇÃO (Carrossel)
+        var currentImgIdx = 0;
+        var currentTipIdx = 0;
+        var images = document.querySelectorAll('.loader-bg-img');
+        var tipText = document.querySelector('.loader-tip-text');
+
+        // Timer para Imagens (Troca a cada 3.5s)
+        var imgTimer = setInterval(function() {
+            if (overlay.style.display === 'none') { clearInterval(imgTimer); return; }
+            
+            images[currentImgIdx].classList.remove('active');
+            currentImgIdx = (currentImgIdx + 1) % images.length;
+            images[currentImgIdx].classList.add('active');
+        }, 3500);
+
+        // Timer para Dicas (Troca a cada 4s)
+        var tipTimer = setInterval(function() {
+            if (overlay.style.display === 'none') { clearInterval(tipTimer); return; }
+
+            currentTipIdx = (currentTipIdx + 1) % gameTips.length;
+            
+            // Efeito visual simples de troca de texto
+            tipBox.style.opacity = 0;
+            setTimeout(function() {
+                tipBox.innerHTML = `<div class="loader-tip-text">${gameTips[currentTipIdx]}</div>`;
+                tipBox.style.opacity = 1;
+            }, 300);
+            
+        }, 4000);
+    }
+})();
+</script>
 
 </body>
 </html>
