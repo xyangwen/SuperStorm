@@ -3367,6 +3367,252 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH: SISTEMA DE DIAMANTES & REVIVER (v5.0)
+ * - Adiciona bônus de boas-vindas (10 Diamantes).
+ * - Implementa sistema de "Continue" ao morrer (Custo: 1 Diamante ou 50 Moedas).
+ * - Limite de 10 revives por partida.
+ */
+(function() {
+    // Aguarda o jogo carregar
+    var revivePatchInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && typeof UI !== 'undefined' && document.body) {
+            clearInterval(revivePatchInterval);
+            initReviveSystem();
+        }
+    }, 200);
+
+    function initReviveSystem() {
+        console.log("Inicializando Patch: Economia de Diamantes & Reviver...");
+
+        // --- 1. CSS DA TELA DE REVIVER ---
+        var style = document.createElement('style');
+        style.innerHTML = `
+            #revive-screen {
+                background: rgba(10, 0, 0, 0.95);
+                z-index: 150;
+                display: flex; flex-direction: column;
+                justify-content: center; align-items: center;
+                backdrop-filter: blur(10px);
+            }
+            .revive-box {
+                background: linear-gradient(135deg, #1a0b0b 0%, #2d1b1b 100%);
+                border: 2px solid #ff3333;
+                box-shadow: 0 0 30px rgba(255, 0, 0, 0.3);
+                border-radius: 15px;
+                padding: 25px;
+                width: 90%; max-width: 400px;
+                text-align: center;
+                animation: pulseBorder 2s infinite;
+            }
+            @keyframes pulseBorder {
+                0% { border-color: #ff3333; }
+                50% { border-color: #ff8888; box-shadow: 0 0 50px rgba(255, 0, 0, 0.6); }
+                100% { border-color: #ff3333; }
+            }
+            .revive-title {
+                font-size: 2rem; color: #fff; margin-bottom: 10px;
+                text-transform: uppercase; text-shadow: 0 0 10px #ff0000;
+            }
+            .revive-timer {
+                font-size: 3rem; color: #ffd700; font-weight: bold; margin: 10px 0;
+            }
+            .revive-info { color: #aaa; margin-bottom: 20px; font-family: 'Rajdhani', sans-serif; }
+            .revive-options { display: flex; flex-direction: column; gap: 15px; }
+            
+            .btn-revive {
+                background: #333; border: 1px solid #fff; color: #fff;
+                padding: 15px; border-radius: 8px; cursor: pointer;
+                display: flex; justify-content: space-between; align-items: center;
+                font-family: 'Orbitron', sans-serif; font-size: 1rem;
+                transition: transform 0.2s, background 0.2s;
+            }
+            .btn-revive:active { transform: scale(0.98); }
+            
+            .btn-gem { border-color: #00eaff; background: linear-gradient(90deg, #004455, #002233); }
+            .btn-coin { border-color: #ffd700; background: linear-gradient(90deg, #554400, #332200); }
+            .btn-giveup { border-color: #555; background: transparent; color: #777; justify-content: center; margin-top: 10px; font-size: 0.8rem;}
+            
+            .currency-cost { font-weight: bold; font-size: 1.2rem; }
+            .revive-count-badge {
+                background: #ff0000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;
+                position: absolute; top: 10px; right: 10px;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // --- 2. HTML DA TELA DE REVIVER ---
+        var reviveDiv = document.createElement('div');
+        reviveDiv.id = 'revive-screen';
+        reviveDiv.className = 'screen hidden';
+        reviveDiv.innerHTML = `
+            <div class="revive-box">
+                <div class="revive-count-badge">REVIVES: <span id="revive-counter">0</span>/10</div>
+                <div class="revive-title">SISTEMA CRÍTICO!</div>
+                <div class="revive-info">Seu herói caiu. Deseja reviver e continuar a pontuação?</div>
+                
+                <div class="revive-options">
+                    <button class="btn-revive btn-gem" onclick="Game.tryRevive('GEMS')">
+                        <span>💎 Usar Diamante</span>
+                        <span class="currency-cost">1</span>
+                    </button>
+                    
+                    <button class="btn-revive btn-coin" onclick="Game.tryRevive('COINS')">
+                        <span>🪙 Usar Moedas</span>
+                        <span class="currency-cost">50</span>
+                    </button>
+                    
+                    <button class="btn-revive btn-giveup" onclick="Game.giveUpAndEnd()">
+                        ❌ DESISTIR E ACEITAR O FIM
+                    </button>
+                </div>
+                
+                <div style="margin-top: 15px; font-size: 0.8rem; color: #666;">
+                    Saldo Atual: <span id="revive-balance-gem">0</span> 💎 | <span id="revive-balance-coin">0</span> 🪙
+                </div>
+            </div>
+        `;
+        document.getElementById('game-wrapper').appendChild(reviveDiv);
+
+        // --- 3. LÓGICA: BÔNUS DE BOAS-VINDAS ---
+        function checkWelcomeGift() {
+            var hasClaimed = localStorage.getItem('SuperSky_WelcomeGift_v1');
+            
+            if (!hasClaimed) {
+                // Adiciona 10 Diamantes
+                PlayerData.gems = (PlayerData.gems || 0) + 10;
+                Game.saveGameData();
+                localStorage.setItem('SuperSky_WelcomeGift_v1', 'true');
+                
+                // Exibe mensagem
+                setTimeout(function() {
+                    alert("✨ PRESENTE DE CONQUISTA! ✨\n\nParabéns, piloto! Você ganhou 10 DIAMANTES gratuitos para começar sua jornada.\n\nUse-os para comprar skins ou reviver durante a partida!");
+                    UI.updateStats();
+                }, 1000);
+            }
+        }
+        // Executa verificação ao iniciar
+        checkWelcomeGift();
+
+        // --- 4. OVERRIDE: LÓGICA DE JOGO ---
+        
+        // A) Inicializar contador de revives na partida
+        Game.revivesUsed = 0;
+        var originalStart = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            this.revivesUsed = 0; // Reseta contador
+            originalStart.call(this, bgUrl);
+        };
+
+        // B) Interceptar o Game Over
+        var originalGameOver = Game.gameOver;
+        Game.gameOver = function() {
+            // Verifica se pode reviver (menos de 10 usos)
+            if (this.revivesUsed < 10) {
+                this.showReviveScreen();
+            } else {
+                // Se acabou os revives, game over normal
+                originalGameOver.call(this);
+            }
+        };
+
+        // C) Função para exibir tela de Revive
+        Game.showReviveScreen = function() {
+            this.state = 'PAUSED'; // Pausa o jogo
+            
+            // Atualiza UI da tela de revive
+            document.getElementById('revive-counter').innerText = this.revivesUsed;
+            document.getElementById('revive-balance-gem').innerText = PlayerData.gems;
+            // Soma as moedas coletadas na partida atual com as do banco para mostrar o total disponível
+            var totalCoinsAvailable = PlayerData.coins + this.coinCount; 
+            document.getElementById('revive-balance-coin').innerText = totalCoinsAvailable;
+
+            UI.hideAll();
+            document.getElementById('revive-screen').classList.remove('hidden');
+            
+            // Tocar som de alerta
+            AudioSys.playTone(150, 'sawtooth', 0.5, 0.2);
+        };
+
+        // D) Tentar Reviver (Ação dos Botões)
+        Game.tryRevive = function(method) {
+            var cost = (method === 'GEMS') ? 1 : 50;
+            var canPay = false;
+
+            // Lógica de Pagamento
+            if (method === 'GEMS') {
+                if (PlayerData.gems >= cost) {
+                    PlayerData.gems -= cost;
+                    canPay = true;
+                } else {
+                    alert("Diamantes insuficientes!");
+                }
+            } else {
+                // Para moedas, considera o que já pegou na fase + banco
+                var totalCoins = PlayerData.coins + this.coinCount;
+                if (totalCoins >= cost) {
+                    // Deduz primeiro das moedas coletadas na fase
+                    if (this.coinCount >= cost) {
+                        this.coinCount -= cost;
+                    } else {
+                        // Se não der, zera as da fase e tira o resto do banco
+                        var remainder = cost - this.coinCount;
+                        this.coinCount = 0;
+                        PlayerData.coins -= remainder;
+                    }
+                    canPay = true;
+                } else {
+                    alert("Moedas insuficientes!");
+                }
+            }
+
+            if (canPay) {
+                this.executeRevive();
+            }
+        };
+
+        // E) Executar o Revive
+        Game.executeRevive = function() {
+            AudioSys.sfxWin(); // Som de sucesso
+            
+            this.revivesUsed++;
+            this.hero.life = 100; // Restaura vida
+            
+            // Empurra obstáculos próximos para evitar morrer instantaneamente
+            this.obstacles.forEach(ob => ob.x += 300);
+            this.projectiles = []; // Limpa tiros
+
+            document.getElementById('revive-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('hero-layer').classList.remove('hidden');
+            
+            // Se houver boss ativo, mostra o HUD dele de volta
+            if (this.boss && this.boss.active) {
+                document.getElementById('boss-hud').style.display = 'flex';
+                document.getElementById('boss-layer').style.display = 'block';
+            }
+
+            this.state = 'PLAYING'; // Retoma o jogo
+            
+            // Efeito visual de invencibilidade temporária
+            var heroEl = document.getElementById('hero-layer');
+            heroEl.style.opacity = '0.5';
+            setTimeout(() => heroEl.style.opacity = '1', 2000);
+            
+            this.createFloatingText("REVIVIDO!", this.canvas.width/2, this.canvas.height/2);
+            Game.saveGameData(); // Salva o gasto das moedas/gemas
+        };
+
+        // F) Desistir
+        Game.giveUpAndEnd = function() {
+            AudioSys.sfxClick();
+            document.getElementById('revive-screen').classList.add('hidden');
+            originalGameOver.call(this); // Chama o Game Over real
+        };
+    }
+})();
+</script>
 
 </body>
 </html>
