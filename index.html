@@ -5086,6 +5086,393 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH v10.0: ESCOLHAS RÁPIDAS & MISSÕES DE PARTIDA
+ * - Adiciona Power-ups aleatórios durante a corrida (Perks).
+ * - Adiciona 3 Missões Dinâmicas por partida com recompensas.
+ * - Integração visual sem quebrar a lógica original.
+ */
+(function() {
+    // Aguarda o jogo estar pronto
+    var patch10Interval = setInterval(function() {
+        if (typeof Game !== 'undefined' && document.body) {
+            clearInterval(patch10Interval);
+            initPerksAndQuests();
+        }
+    }, 600);
+
+    function initPerksAndQuests() {
+        console.log("Inicializando Patch v10.0: Perks & Run Quests...");
+
+        // ==========================================
+        // 1. INJEÇÃO DE CSS (Visual Cyberpunk)
+        // ==========================================
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* --- TELA DE PERKS (ESCOLHAS) --- */
+            #perk-overlay {
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0, 0, 0, 0.85);
+                z-index: 300; /* Acima de quase tudo */
+                display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                backdrop-filter: blur(5px);
+                animation: fadeIn 0.3s;
+            }
+            .perk-title {
+                font-size: 2rem; color: #fff; text-transform: uppercase;
+                text-shadow: 0 0 15px #00eaff; margin-bottom: 30px;
+                font-family: 'Orbitron', sans-serif; letter-spacing: 2px;
+            }
+            .perk-container {
+                display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;
+                width: 95%; max-width: 800px;
+            }
+            .perk-card {
+                background: linear-gradient(145deg, #1a1a2e, #16213e);
+                border: 2px solid #444; border-radius: 15px;
+                width: 140px; height: 180px;
+                display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                cursor: pointer; position: relative; overflow: hidden;
+                transition: transform 0.2s, border-color 0.2s;
+                box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            }
+            .perk-card:hover, .perk-card:active {
+                transform: scale(1.05); border-color: #ffd700;
+                box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+            }
+            .perk-icon { font-size: 3.5rem; margin-bottom: 10px; }
+            .perk-name { 
+                font-family: 'Rajdhani', sans-serif; font-weight: bold; color: #fff; 
+                font-size: 1.1rem; text-align: center; line-height: 1.2;
+            }
+            .perk-desc {
+                font-size: 0.7rem; color: #aaa; text-align: center; margin-top: 5px; padding: 0 5px;
+            }
+            .perk-rare { border-color: #ffd700; box-shadow: 0 0 15px rgba(255, 215, 0, 0.2); }
+
+            /* --- NOTIFICAÇÃO DE QUEST (TOAST) --- */
+            .quest-toast {
+                position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+                background: rgba(0, 20, 40, 0.9); border: 1px solid #00eaff;
+                padding: 10px 20px; border-radius: 30px;
+                color: #fff; font-family: 'Rajdhani', sans-serif; font-weight: bold;
+                display: flex; align-items: center; gap: 10px;
+                box-shadow: 0 0 20px rgba(0, 234, 255, 0.4);
+                z-index: 100; pointer-events: none;
+                animation: slideDownToast 0.5s forwards, fadeOutToast 0.5s 3s forwards;
+            }
+            @keyframes slideDownToast { from { top: -50px; opacity: 0; } to { top: 80px; opacity: 1; } }
+            @keyframes fadeOutToast { to { opacity: 0; transform: translateX(-50%) translateY(-20px); } }
+
+            /* --- RESULTADO DAS QUESTS (GAME OVER) --- */
+            .quest-results-box {
+                margin: 15px 0; width: 90%; background: rgba(0,0,0,0.5);
+                border-radius: 10px; padding: 10px; border: 1px dashed #555;
+            }
+            .q-res-row {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 5px; font-size: 0.9rem; color: #ddd;
+                font-family: 'Rajdhani', sans-serif;
+            }
+            .q-check { color: #555; font-weight: bold; }
+            .q-check.done { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
+            
+            /* --- DOUBLE COIN FX --- */
+            .coin-fx {
+                position: absolute; color: #ffd700; font-weight: bold;
+                animation: floatUpCoin 0.8s forwards; pointer-events: none; z-index: 50;
+            }
+            @keyframes floatUpCoin { to { transform: translateY(-50px); opacity: 0; } }
+        `;
+        document.head.appendChild(style);
+
+        // ==========================================
+        // 2. INJEÇÃO DE HTML (Overlay de Perks)
+        // ==========================================
+        var perkOverlay = document.createElement('div');
+        perkOverlay.id = 'perk-overlay';
+        perkOverlay.className = 'hidden';
+        perkOverlay.innerHTML = `
+            <div class="perk-title">ESCOLHA SEU PODER</div>
+            <div class="perk-container" id="perk-cards-area"></div>
+        `;
+        document.body.appendChild(perkOverlay);
+
+        // ==========================================
+        // 3. LÓGICA: SISTEMA DE QUESTS (MISSÕES)
+        // ==========================================
+        var QuestSystem = {
+            active: [],
+            pool: [
+                { id: 'coin20', text: "Colete 20 Moedas", type: 'COIN', target: 20, reward: 30 },
+                { id: 'coin50', text: "Colete 50 Moedas", type: 'COIN', target: 50, reward: 80 },
+                { id: 'dist300', text: "Chegue a 300m", type: 'DIST', target: 300, reward: 40 },
+                { id: 'dist800', text: "Chegue a 800m", type: 'DIST', target: 800, reward: 100 },
+                { id: 'boss1', text: "Derrote 1 Chefe", type: 'BOSS', target: 1, reward: 150 },
+                { id: 'nodmg200', text: "Sem dano até 200m", type: 'NODMG', target: 200, reward: 100 }
+            ],
+            
+            startRun: function() {
+                this.active = [];
+                // Sorteia 3 missões únicas
+                var poolCopy = [...this.pool];
+                for(var i=0; i<3; i++) {
+                    if(poolCopy.length === 0) break;
+                    var idx = Math.floor(Math.random() * poolCopy.length);
+                    var q = JSON.parse(JSON.stringify(poolCopy[idx])); // Clone
+                    q.current = 0;
+                    q.completed = false;
+                    q.failed = false; // Para missões de "Sem Dano"
+                    this.active.push(q);
+                    poolCopy.splice(idx, 1);
+                }
+                this.showStartToast();
+            },
+
+            update: function(type, val) {
+                var updated = false;
+                this.active.forEach(q => {
+                    if(q.completed || q.failed) return;
+
+                    if(q.type === type) {
+                        if (type === 'DIST') q.current = Math.floor(val);
+                        else q.current += val;
+                        
+                        if(q.current >= q.target) {
+                            q.completed = true;
+                            this.showCompleteToast(q);
+                        }
+                    }
+                    // Lógica especial: Sem Dano
+                    if(q.type === 'NODMG') {
+                        // Se o tipo do update for 'DAMAGE', falha a missão
+                        if(type === 'DAMAGE') {
+                            q.failed = true; 
+                        } else if (type === 'DIST' && val >= q.target) {
+                            q.completed = true; // Passou da distância sem falhar
+                            this.showCompleteToast(q);
+                        }
+                    }
+                });
+            },
+
+            showStartToast: function() {
+                var div = document.createElement('div');
+                div.className = 'quest-toast';
+                div.innerHTML = `📜 Novas Missões da Partida Recebidas!`;
+                document.body.appendChild(div);
+                setTimeout(() => div.remove(), 3500);
+            },
+
+            showCompleteToast: function(q) {
+                var div = document.createElement('div');
+                div.className = 'quest-toast';
+                div.style.borderColor = '#00ff00';
+                div.innerHTML = `✅ Missão Cumprida: ${q.text}`;
+                document.body.appendChild(div);
+                if(typeof AudioSys !== 'undefined') AudioSys.playTone(600, 'sine', 0.1, 0.1);
+                setTimeout(() => div.remove(), 3500);
+            }
+        };
+
+        // ==========================================
+        // 4. LÓGICA: SISTEMA DE PERKS (ESCOLHAS)
+        // ==========================================
+        var PerkSystem = {
+            nextTrigger: 0,
+            doubleCoinTimer: 0,
+            
+            reset: function() {
+                // Primeira escolha entre 150m e 250m
+                this.nextTrigger = 150 + Math.random() * 100;
+                this.doubleCoinTimer = 0;
+            },
+
+            check: function(score) {
+                if(score > this.nextTrigger) {
+                    this.trigger();
+                    // Próxima escolha entre +300m e +500m
+                    this.nextTrigger = score + 300 + Math.random() * 200;
+                }
+                
+                // Timer de Moedas
+                if(this.doubleCoinTimer > 0) {
+                    this.doubleCoinTimer--;
+                }
+            },
+
+            trigger: function() {
+                Game.togglePause(); // Usa o pause do jogo para parar tudo
+                // Mas precisamos esconder a tela de pause padrão se ela aparecer
+                var pauseScreen = document.getElementById('pause-screen');
+                if(pauseScreen) pauseScreen.classList.add('hidden');
+
+                // Renderiza opções
+                var container = document.getElementById('perk-cards-area');
+                container.innerHTML = '';
+                
+                var options = [
+                    { icon: '⚡', name: 'TURBO', desc: '+Velocidade +Aceleração', action: () => { Game.gameSpeed += 2; } },
+                    { icon: '❤️', name: 'CURA', desc: '+30% de Vida', action: () => { Game.hero.life = Math.min(100, Game.hero.life + 30); UI.updateHUD(Game.hero.life, Game.coinCount, Game.score); } },
+                    { icon: '🪙', name: 'RIQUEZA', desc: 'Moedas x2 (15s)', action: () => { PerkSystem.doubleCoinTimer = 60 * 15; /* 60fps * 15s */ } },
+                    { icon: '🛡️', name: 'ESCUDO', desc: 'Invencível (5s)', action: () => { 
+                        var heroEl = document.getElementById('hero-layer');
+                        heroEl.style.opacity = 0.5; 
+                        var originalHit = Game.takeDamage;
+                        Game.takeDamage = function(){}; // Anula dano
+                        setTimeout(() => { 
+                            Game.takeDamage = originalHit; 
+                            heroEl.style.opacity = 1; 
+                        }, 5000);
+                    }}
+                ];
+
+                // Sorteia 3
+                options.sort(() => Math.random() - 0.5);
+                options.slice(0, 3).forEach(opt => {
+                    var card = document.createElement('div');
+                    card.className = 'perk-card';
+                    if(opt.name === 'RIQUEZA') card.classList.add('perk-rare');
+                    
+                    card.innerHTML = `
+                        <div class="perk-icon">${opt.icon}</div>
+                        <div class="perk-name">${opt.name}</div>
+                        <div class="perk-desc">${opt.desc}</div>
+                    `;
+                    card.onclick = () => {
+                        if(typeof AudioSys !== 'undefined') AudioSys.sfxClick();
+                        opt.action();
+                        this.close();
+                    };
+                    container.appendChild(card);
+                });
+
+                document.getElementById('perk-overlay').classList.remove('hidden');
+            },
+
+            close: function() {
+                document.getElementById('perk-overlay').classList.add('hidden');
+                Game.togglePause(); // Despausa
+            }
+        };
+
+        // ==========================================
+        // 5. HOOKS / OVERRIDES NO JOGO ORIGINAL
+        // ==========================================
+
+        // --- HOOK: START MATCH ---
+        var _origStart = Game.startMatch;
+        Game.startMatch = function(bg) {
+            _origStart.call(this, bg);
+            QuestSystem.startRun();
+            PerkSystem.reset();
+            this.lastCoinCount = 0; // Para detectar coleta de moedas
+        };
+
+        // --- HOOK: UPDATE LOOP ---
+        var _origUpdate = Game.update;
+        Game.update = function() {
+            var lifeBefore = this.hero ? this.hero.life : 0;
+            
+            _origUpdate.call(this);
+
+            if (this.state === 'PLAYING') {
+                // 1. Checa Perks
+                PerkSystem.check(this.score);
+
+                // 2. Atualiza Quests de Distância
+                QuestSystem.update('DIST', this.score);
+
+                // 3. Detecta Dano (Para Quest No-Damage)
+                if (this.hero && this.hero.life < lifeBefore) {
+                    QuestSystem.update('DAMAGE', 1);
+                }
+
+                // 4. Detecta Coleta de Moedas (Lógica de Double Coin)
+                if (this.coinCount > this.lastCoinCount) {
+                    var collected = this.coinCount - this.lastCoinCount;
+                    
+                    // Se Perk Ativo, adiciona extra
+                    if (PerkSystem.doubleCoinTimer > 0) {
+                        this.coinCount += collected; // Dobra (já ganhou 1, ganha +1)
+                        // Efeito visual
+                        var txt = document.createElement('div');
+                        txt.className = 'coin-fx';
+                        txt.innerText = "x2";
+                        txt.style.left = (this.hero.x + 20) + 'px';
+                        txt.style.top = (this.hero.y - 40) + 'px';
+                        document.body.appendChild(txt);
+                        setTimeout(() => txt.remove(), 800);
+                    }
+                    
+                    QuestSystem.update('COIN', collected * (PerkSystem.doubleCoinTimer > 0 ? 2 : 1));
+                    this.lastCoinCount = this.coinCount;
+                } else {
+                    // Sincroniza caso o jogo tenha resetado ou algo assim
+                    this.lastCoinCount = this.coinCount;
+                }
+            }
+        };
+
+        // --- HOOK: BOSS VICTORY ---
+        var _origVic = Game.bossVictory;
+        Game.bossVictory = function() {
+            _origVic.call(this);
+            QuestSystem.update('BOSS', 1);
+        };
+
+        // --- HOOK: GAME OVER ---
+        var _origGameOver = Game.gameOver;
+        Game.gameOver = function() {
+            // Antes de mostrar a tela, injetamos os resultados das quests
+            // Calculamos recompensas
+            var questBonus = 0;
+            var htmlResults = `<div class="quest-results-box"><div style="color:#ffd700; margin-bottom:5px; text-align:center;">MISSÕES DA PARTIDA</div>`;
+            
+            QuestSystem.active.forEach(q => {
+                var icon = q.completed ? '✅' : '❌';
+                var cls = q.completed ? 'done' : '';
+                
+                if (q.completed) questBonus += q.reward;
+                
+                htmlResults += `
+                    <div class="q-res-row">
+                        <span>${q.text}</span>
+                        <span class="q-check ${cls}">${icon} ${q.completed ? '+' + q.reward + '🪙' : ''}</span>
+                    </div>
+                `;
+            });
+            htmlResults += `</div>`;
+
+            // Aplica Bônus
+            if (questBonus > 0) {
+                this.coinCount += questBonus;
+                // Efeito sonoro extra
+                setTimeout(() => { if(typeof AudioSys !== 'undefined') AudioSys.playTone(800, 'square', 0.2, 0.2); }, 500);
+            }
+
+            // Chama o Game Over original (que preenche a tela)
+            _origGameOver.call(this);
+
+            // Injeta o HTML na tela de Game Over já aberta
+            var goScreen = document.getElementById('game-over-screen');
+            var contentBox = goScreen.querySelector('div[style*="background"]'); // A caixa preta central
+            
+            // Insere antes do botão "Jogar Novamente"
+            var btn = contentBox.querySelector('button');
+            var div = document.createElement('div');
+            div.innerHTML = htmlResults;
+            contentBox.insertBefore(div, btn);
+            
+            // Atualiza texto de moedas total com o bônus
+            document.getElementById('go-coins').innerText = this.coinCount;
+        };
+    }
+})();
+</script>
 
 </body>
 </html>
