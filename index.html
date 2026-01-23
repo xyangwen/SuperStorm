@@ -5473,6 +5473,445 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH v11.0: OTIMIZADOR DE PERFORMANCE (ANDROID FIX)
+ * Corrige travamentos, vazamento de memória e conflito de loops de animação.
+ */
+(function() {
+    // Aguarda todos os outros scripts carregarem (2 segundos)
+    setTimeout(function() {
+        if (typeof Game === 'undefined') return;
+        
+        console.log("🛠️ Aplicando Correções de Performance v11.0...");
+
+        // 1. FORÇAR ACELERAÇÃO DE HARDWARE (CSS)
+        // Isso obriga o navegador do Android a usar a GPU para desenhar o jogo
+        var style = document.createElement('style');
+        style.innerHTML = `
+            canvas {
+                will-change: transform; /* Dica para o navegador otimizar */
+                transform: translateZ(0); /* Força GPU */
+                image-rendering: -webkit-optimize-contrast; /* Melhora nitidez */
+            }
+            /* Otimiza o fundo do menu para não consumir recurso quando oculto */
+            #advanced-menu-container.hidden { display: none !important; }
+        `;
+        document.head.appendChild(style);
+
+        // 2. CORREÇÃO CRÍTICA: DESLIGAR ANIMAÇÃO DO MENU AO JOGAR
+        // O patch v9 cria um loop infinito de partículas no menu que continuava rodando
+        // durante o jogo, consumindo 50% da bateria/processamento.
+        var menuCanvas = document.getElementById('menu-particles');
+        
+        // Intercepta a função de esconder telas para "Pausar" visualmente o menu
+        var _originalHideAll = UI.hideAll;
+        UI.hideAll = function() {
+            _originalHideAll.apply(this);
+            // Se o canvas do menu existir, esconda-o totalmente (para o navegador parar de desenhar)
+            if (menuCanvas) menuCanvas.style.display = 'none';
+        };
+
+        // Intercepta a função de mostrar o menu para "Reativar"
+        var _originalShowMenu = UI.showMenu;
+        UI.showMenu = function() {
+            _originalShowMenu.apply(this);
+            if (menuCanvas) menuCanvas.style.display = 'block';
+            
+            // Força limpeza de arrays do jogo para liberar RAM
+            Game.particles = [];
+            Game.obstacles = [];
+            Game.projectiles = [];
+        };
+
+        // 3. LIMITADOR DE PARTÍCULAS (ANTI-LAG)
+        // Explosões e efeitos (v1 a v10) criam muitas partículas. Vamos limitar.
+        var MAX_PARTICLES = 40; // Máximo seguro para Android
+        
+        var _origEmit = Game.emitHeroParticles;
+        Game.emitHeroParticles = function() {
+            // Em dispositivos móveis, reduz a frequência de emissão pela metade
+            if (Math.random() > 0.5) return;
+            
+            // Se já tem muitas partículas, remove as antigas antes de criar novas
+            if (this.particles.length > MAX_PARTICLES) {
+                this.particles.splice(0, Math.floor(this.particles.length / 2));
+            }
+            _origEmit.call(this);
+        };
+
+        // Sobrescreve a explosão para ser mais leve
+        Game.createExplosion = function(x, y, color) {
+            // Reduz de 10 para 5 partículas por explosão
+            for(let k=0; k<5; k++){
+                this.particles.push({
+                    x: x, y: y,
+                    vx: (Math.random()-0.5)*10,
+                    vy: (Math.random()-0.5)*10,
+                    life: 20, // Vida menor (era 30)
+                    color: color
+                });
+            }
+        };
+
+        // 4. GARBAGE COLLECTION (LIMPEZA DE MEMÓRIA)
+        // Garante que o jogo comece "limpo" toda vez
+        var _origStartMatch = Game.startMatch;
+        Game.startMatch = function(bgUrl) {
+            this.obstacles = [];
+            this.items = [];
+            this.particles = [];
+            this.projectiles = [];
+            
+            // Executa o início normal
+            _origStartMatch.call(this, bgUrl);
+            
+            // Garante que o canvas do menu sumiu
+            if (menuCanvas) menuCanvas.style.display = 'none';
+        };
+
+        console.log("✅ Otimização Concluída: Modo Android Ativado.");
+
+    }, 2500); // Executa por último para garantir prioridade sobre os patches v1-v10
+})();
+</script>
+<script>
+/**
+ * PATCH v12.0: ARSENAL DE POWER-UPS (LOJA & COMBATE)
+ * Adiciona sistema de compra pré-jogo e ativação de habilidades.
+ */
+(function() {
+    // Aguarda o carregamento do jogo
+    var powerUpInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && document.body) {
+            clearInterval(powerUpInterval);
+            initPowerUpSystem();
+        }
+    }, 800);
+
+    function initPowerUpSystem() {
+        console.log("Inicializando Patch v12.0: Power-ups...");
+
+        // 1. CONFIGURAÇÃO DOS PODERES
+        var POWER_UPS = [
+            { id: 'shield', name: 'Escudo de Energia', desc: 'Invencível por 5s', cost: 100, icon: '🛡️', duration: 5000 },
+            { id: 'slow', name: 'Matrix Time', desc: 'Câmera Lenta (10s)', cost: 75, icon: '⏱️', duration: 10000 },
+            { id: 'magnet', name: 'Ímã Magnético', desc: 'Atrai moedas (15s)', cost: 50, icon: '🧲', duration: 15000 },
+            { id: 'speed1', name: 'Turbo', desc: 'Acelera + Velocidade', cost: 50, icon: '⏩', boost: 5 },
+            { id: 'speed2', name: 'Super Turbo', desc: 'Velocidade Alta', cost: 75, icon: '🚀', boost: 10 },
+            { id: 'speed3', name: 'Hyper Drive', desc: 'Velocidade Máxima', cost: 100, icon: '🔥', boost: 15 },
+            { id: 'teleport', name: 'Salto Quântico', desc: 'Avança distância aleatória', cost: 100, icon: '🌀' }
+        ];
+
+        // Estado local dos Power-ups
+        var Inventory = []; // Itens comprados para a partida atual
+        var ActiveEffects = {
+            shield: false,
+            magnet: false,
+            slow: false
+        };
+
+        // 2. CSS DA LOJA E HUD
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* --- LOJA PRÉ-JOGO --- */
+            #powerup-shop-overlay {
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(10, 10, 20, 0.95); z-index: 500;
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                backdrop-filter: blur(5px); transition: opacity 0.3s;
+            }
+            .shop-title {
+                font-size: 1.8rem; color: #ffd700; text-transform: uppercase;
+                margin-bottom: 20px; font-family: 'Orbitron', sans-serif;
+                text-shadow: 0 0 10px #ffd700;
+            }
+            .shop-grid {
+                display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;
+                max-width: 600px; padding: 10px; overflow-y: auto; max-height: 60vh;
+            }
+            .shop-item {
+                background: linear-gradient(145deg, #222, #111);
+                border: 1px solid #444; border-radius: 8px;
+                width: 100px; padding: 10px; text-align: center;
+                cursor: pointer; position: relative;
+                transition: transform 0.2s, border-color 0.2s;
+            }
+            .shop-item:active { transform: scale(0.95); }
+            .shop-item.selected { border-color: #00ff00; background: #002200; box-shadow: 0 0 15px #00ff00; }
+            .shop-icon { font-size: 2rem; margin-bottom: 5px; }
+            .shop-name { font-size: 0.7rem; color: #fff; font-weight: bold; height: 25px; overflow:hidden;}
+            .shop-cost { color: #ffd700; font-size: 0.9rem; font-weight: bold; margin-top: 5px; }
+            
+            .shop-actions {
+                margin-top: 20px; display: flex; gap: 20px; width: 90%; max-width: 400px;
+            }
+            .btn-shop-play {
+                flex: 1; padding: 15px; background: #00eaff; color: #000;
+                border: none; font-weight: bold; font-family: 'Orbitron', sans-serif;
+                text-transform: uppercase; border-radius: 5px; cursor: pointer;
+            }
+
+            /* --- HUD IN-GAME --- */
+            #powerup-hud {
+                position: absolute; right: 15px; top: 150px;
+                display: flex; flex-direction: column; gap: 10px; z-index: 90;
+            }
+            .hud-power-btn {
+                width: 50px; height: 50px; border-radius: 50%;
+                background: rgba(0,0,0,0.6); border: 2px solid #fff;
+                color: #fff; font-size: 1.5rem; cursor: pointer;
+                display: flex; align-items: center; justify-content: center;
+                transition: transform 0.2s; position: relative;
+            }
+            .hud-power-btn:active { transform: scale(0.9); background: #fff; color: #000; }
+            .hud-power-btn::after {
+                content: attr(data-name);
+                position: absolute; right: 60px; background: rgba(0,0,0,0.7);
+                padding: 2px 5px; border-radius: 3px; font-size: 0.7rem;
+                display: none; white-space: nowrap;
+            }
+            .hud-power-btn:active::after { display: block; }
+
+            /* Efeitos Visuais */
+            .shield-effect { border: 4px solid #00eaff !important; box-shadow: 0 0 20px #00eaff, inset 0 0 20px #00eaff; }
+        `;
+        document.head.appendChild(style);
+
+        // 3. HTML DA LOJA
+        var shopOverlay = document.createElement('div');
+        shopOverlay.id = 'powerup-shop-overlay';
+        shopOverlay.className = 'hidden';
+        shopOverlay.innerHTML = `
+            <div class="shop-title">Arsenal de Combate</div>
+            <div style="color: #fff; margin-bottom: 10px;">Seu Saldo: <span id="shop-user-coins" style="color: #ffd700; font-weight: bold;">0</span> 🪙</div>
+            <div class="shop-grid" id="shop-items-container"></div>
+            <div class="shop-actions">
+                <button class="btn-shop-play" onclick="PowerUpSystem.confirmAndPlay()">INICIAR MISSÃO >></button>
+            </div>
+        `;
+        document.body.appendChild(shopOverlay);
+
+        // 4. HTML DO HUD (Botões durante o jogo)
+        var hudContainer = document.createElement('div');
+        hudContainer.id = 'powerup-hud';
+        document.getElementById('game-wrapper').appendChild(hudContainer);
+
+        // 5. SISTEMA LÓGICO
+        window.PowerUpSystem = {
+            
+            // Abre a loja
+            openShop: function() {
+                Inventory = []; // Reseta inventário
+                document.getElementById('shop-user-coins').innerText = PlayerData.coins;
+                
+                var container = document.getElementById('shop-items-container');
+                container.innerHTML = '';
+
+                POWER_UPS.forEach(p => {
+                    var div = document.createElement('div');
+                    div.className = 'shop-item';
+                    div.innerHTML = `
+                        <div class="shop-icon">${p.icon}</div>
+                        <div class="shop-name">${p.name}</div>
+                        <div class="shop-cost">${p.cost}</div>
+                    `;
+                    div.onclick = function() {
+                        PowerUpSystem.toggleBuy(p, div);
+                    };
+                    container.appendChild(div);
+                });
+
+                document.getElementById('powerup-shop-overlay').classList.remove('hidden');
+            },
+
+            // Lógica de Compra (Toggle)
+            toggleBuy: function(item, element) {
+                // Se já tem, remove (reembolsa)
+                var index = Inventory.findIndex(i => i.id === item.id);
+                if (index > -1) {
+                    Inventory.splice(index, 1);
+                    PlayerData.coins += item.cost;
+                    element.classList.remove('selected');
+                    if(typeof AudioSys !== 'undefined') AudioSys.sfxClick();
+                } else {
+                    // Tenta comprar
+                    if (PlayerData.coins >= item.cost) {
+                        PlayerData.coins -= item.cost;
+                        Inventory.push(item);
+                        element.classList.add('selected');
+                        if(typeof AudioSys !== 'undefined') AudioSys.sfxCoin();
+                    } else {
+                        alert("Moedas insuficientes!");
+                    }
+                }
+                document.getElementById('shop-user-coins').innerText = PlayerData.coins;
+                // Salva o saldo atualizado (opcional, para persistir gasto)
+                Game.saveGameData(); 
+            },
+
+            // Inicia o jogo
+            confirmAndPlay: function() {
+                document.getElementById('powerup-shop-overlay').classList.add('hidden');
+                // Chama a função real de start do jogo
+                Game.realStartMatch();
+            },
+
+            // Renderiza botões no jogo
+            renderInGameButtons: function() {
+                var container = document.getElementById('powerup-hud');
+                container.innerHTML = '';
+                
+                Inventory.forEach((item, idx) => {
+                    var btn = document.createElement('div');
+                    btn.className = 'hud-power-btn';
+                    btn.innerHTML = item.icon;
+                    btn.setAttribute('data-name', item.name);
+                    
+                    btn.onclick = function(e) {
+                        e.stopPropagation(); // Não pular o personagem
+                        PowerUpSystem.activate(item);
+                        btn.remove(); // Remove botão após uso
+                    };
+
+                    // Touch event para mobile (garantir que não pule)
+                    btn.ontouchstart = function(e) {
+                        e.stopPropagation();
+                        PowerUpSystem.activate(item);
+                        btn.remove();
+                    };
+
+                    container.appendChild(btn);
+                });
+            },
+
+            // Ativa o poder
+            activate: function(item) {
+                if(typeof AudioSys !== 'undefined') AudioSys.playTone(400, 'square', 0.1, 0.1);
+                Game.createFloatingText(item.name + "!", Game.hero.x, Game.hero.y - 50);
+
+                if (item.id === 'shield') {
+                    ActiveEffects.shield = true;
+                    document.getElementById('hero-layer').classList.add('shield-effect');
+                    setTimeout(() => {
+                        ActiveEffects.shield = false;
+                        document.getElementById('hero-layer').classList.remove('shield-effect');
+                    }, item.duration);
+                }
+                
+                if (item.id === 'magnet') {
+                    ActiveEffects.magnet = true;
+                    setTimeout(() => ActiveEffects.magnet = false, item.duration);
+                }
+
+                if (item.id === 'slow') {
+                    ActiveEffects.slow = true;
+                    // Reduz velocidade drasticamente
+                    var originalSpeed = Game.gameSpeed;
+                    // Força update no loop para considerar o slow
+                    setTimeout(() => ActiveEffects.slow = false, item.duration);
+                }
+
+                if (item.id.startsWith('speed')) {
+                    // Boost instantâneo de velocidade (permanente para a run ou dash?)
+                    // Vamos fazer um dash que percorre distância rápido sem risco
+                    Game.score += (item.boost * 50); // Ganha metros
+                    Game.gameSpeed += (item.boost / 2); // Aumenta um pouco a velocidade base
+                }
+
+                if (item.id === 'teleport') {
+                    var dist = Math.floor(Math.random() * 500) + 200; // 200 a 700m
+                    Game.score += dist;
+                    Game.createFloatingText("+" + dist + "m", Game.hero.x, Game.hero.y);
+                    
+                    // Efeito visual de blink
+                    var hero = document.getElementById('hero-layer');
+                    hero.style.opacity = 0;
+                    setTimeout(() => hero.style.opacity = 1, 300);
+                }
+            }
+        };
+
+        // 6. OVERRIDES (GANCHOS NO JOGO ORIGINAL)
+
+        // A) Intercepta o Botão de Iniciar (Select Scenario)
+        // Originalmente chama Game.startMatch. Vamos desviar para a Loja.
+        var _origSelectScenario = Game.selectScenarioAndStart;
+        Game.selectScenarioAndStart = function() {
+            // Em vez de iniciar, abre a loja
+            // O usuário escolheu o cenário, agora compra os itens
+            if(typeof AudioSys !== 'undefined') AudioSys.sfxClick();
+            
+            // Guarda a URL do cenário selecionado (lógica original)
+            var scenario = SCENARIOS.find(s => s.id === this.selectedScenarioId) || SCENARIOS[0];
+            this.pendingBgUrl = scenario.url;
+            
+            PowerUpSystem.openShop();
+        };
+
+        // B) Função Real de Start (Chamada pela loja)
+        Game.realStartMatch = function() {
+            // Chama o startMatch original (que pode ter sido patcheado por v11, v10, etc)
+            // Precisamos acessar o prototype ou a função salva se houver, 
+            // mas como sobrescrevemos startMatch em patches anteriores, precisamos chamar a função correta.
+            
+            // Truque: StartMatch espera a URL.
+            // Vamos chamar a função original de start.
+            // Como StartMatch reseta tudo, chamamos ela e DEPOIS injetamos os itens.
+            
+            this.startMatch(this.pendingBgUrl);
+            
+            // Injeta botões no HUD
+            PowerUpSystem.renderInGameButtons();
+            
+            // Reseta efeitos
+            ActiveEffects = { shield: false, magnet: false, slow: false };
+        };
+
+        // C) Override: Take Damage (Escudo)
+        var _origTakeDamage = Game.takeDamage;
+        Game.takeDamage = function(amount) {
+            if (ActiveEffects.shield) {
+                Game.createFloatingText("BLOQUEADO!", this.hero.x, this.hero.y);
+                return; // Não toma dano
+            }
+            _origTakeDamage.call(this, amount);
+        };
+
+        // D) Override: Update (Ímã e Slow Motion)
+        var _origUpdate = Game.update;
+        Game.update = function() {
+            // Lógica de Slow Motion (Manipula gameSpeed antes do update)
+            var realSpeed = this.gameSpeed;
+            if (ActiveEffects.slow && this.state === 'PLAYING') {
+                this.gameSpeed = 4; // Velocidade fixa lenta
+            }
+
+            _origUpdate.call(this);
+            
+            // Restaura velocidade visual (para score não quebrar)
+            if (ActiveEffects.slow && this.state === 'PLAYING') {
+                // Mantém lento
+            } else {
+                // Se não estiver slow, garante que speed volte ao normal no próximo frame
+                // A lógica original calcula speed baseada no score, então ela se auto-corrige
+            }
+
+            // Lógica do Ímã
+            if (ActiveEffects.magnet && this.state === 'PLAYING') {
+                this.items.forEach(it => {
+                    if (it.type === 'COIN') {
+                        // Puxa a moeda para o herói
+                        it.x += (this.hero.x - it.x) * 0.1;
+                        it.y += (this.hero.y - it.y) * 0.1;
+                    }
+                });
+            }
+        };
+
+    }
+})();
+</script>
 
 </body>
 </html>
