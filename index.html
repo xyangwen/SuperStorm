@@ -4777,6 +4777,315 @@ window.onload = () => Game.init();
 
 })();
 </script>
+<script>
+/**
+ * PATCH v9.0: MENU AVANÇADO & UI OVERHAUL
+ * Organiza todos os modos e botões em um Grid Futurista com Partículas.
+ */
+(function() {
+    // Aguarda que todos os patches anteriores (v1 a v8) tenham carregado seus botões
+    var menuInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && typeof UI !== 'undefined' && document.getElementById('menu-screen')) {
+            clearInterval(menuInterval);
+            initAdvancedMenu();
+        }
+    }, 800); // Delay de 800ms para garantir que os outros scripts rodaram
+
+    function initAdvancedMenu() {
+        console.log("Inicializando Menu Avançado v9.0...");
+
+        // 1. INJEÇÃO DE CSS AVANÇADO
+        var style = document.createElement('style');
+        style.innerHTML = `
+            /* --- ESTILOS DO MENU AVANÇADO --- */
+            #advanced-menu-container {
+                width: 100%; height: 100%;
+                display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                position: relative; z-index: 10;
+            }
+
+            /* Título com Glitch melhorado */
+            .menu-logo {
+                font-size: 3.5rem; text-transform: uppercase;
+                background: linear-gradient(to bottom, #fff, #888);
+                -webkit-background-clip: text; color: transparent;
+                text-shadow: 0 0 20px rgba(0, 234, 255, 0.8);
+                margin-bottom: 5px; letter-spacing: 4px;
+                animation: floatTitle 3s ease-in-out infinite;
+            }
+            .menu-version {
+                color: #00eaff; font-size: 0.9rem; letter-spacing: 6px;
+                margin-bottom: 25px; text-shadow: 0 0 5px #00eaff;
+                opacity: 0.8;
+            }
+
+            /* Linha de Utilidades (História, Score, Eventos) */
+            .utility-row {
+                display: flex; gap: 15px; margin-bottom: 20px;
+                width: 90%; max-width: 500px; justify-content: center;
+            }
+            .util-btn {
+                background: rgba(0, 20, 40, 0.8);
+                border: 1px solid #00eaff; color: #fff;
+                padding: 10px 15px; border-radius: 8px;
+                font-family: 'Rajdhani', sans-serif; font-weight: bold;
+                text-transform: uppercase; cursor: pointer;
+                flex: 1; display: flex; flex-direction: column; align-items: center;
+                transition: all 0.2s; position: relative; overflow: hidden;
+                box-shadow: 0 0 10px rgba(0, 234, 255, 0.1);
+            }
+            .util-btn:hover { background: #00eaff; color: #000; box-shadow: 0 0 20px #00eaff; transform: translateY(-3px); }
+            .util-btn span { font-size: 1.5rem; margin-bottom: 5px; }
+            
+            /* Destaque para Eventos */
+            .util-btn.event-highlight {
+                border-color: #ffd700; color: #ffd700;
+                animation: pulseBorder 2s infinite;
+            }
+            .util-btn.event-highlight:hover { background: #ffd700; color: #000; }
+
+            /* Grid de Modos de Jogo */
+            .modes-grid {
+                display: grid; grid-template-columns: 1fr 1fr;
+                gap: 15px; width: 90%; max-width: 500px;
+                margin-bottom: 20px;
+            }
+
+            .mode-card {
+                position: relative; height: 100px;
+                border-radius: 12px; cursor: pointer;
+                overflow: hidden; display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                transition: transform 0.2s, filter 0.2s;
+                border: 2px solid transparent;
+                background-size: cover; background-position: center;
+            }
+            .mode-card:hover { transform: scale(1.03); z-index: 5; }
+            .mode-card::before {
+                content: ''; position: absolute; inset: 0;
+                background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.4));
+                z-index: 1; transition: opacity 0.3s;
+            }
+            .mode-card:hover::before { opacity: 0.7; }
+            
+            .mode-icon { font-size: 2rem; z-index: 2; text-shadow: 0 0 10px rgba(0,0,0,0.8); margin-bottom: 5px; }
+            .mode-title { 
+                font-family: 'Orbitron', sans-serif; color: #fff; z-index: 2; 
+                text-transform: uppercase; font-size: 0.9rem; letter-spacing: 1px;
+                text-shadow: 0 2px 4px #000; font-weight: bold;
+            }
+
+            /* Estilos Específicos dos Modos */
+            .mode-normal { 
+                border-color: #00eaff; box-shadow: 0 0 15px rgba(0, 234, 255, 0.3);
+                background-image: url('https://i.pinimg.com/736x/87/00/66/870066d8704207908ce901968172901a.jpg');
+            }
+            .mode-frenetic { 
+                border-color: #ff3333; box-shadow: 0 0 15px rgba(255, 51, 51, 0.3);
+                background-image: url('https://i.pinimg.com/736x/c9/79/33/c97933f88998846c483a918731737e5c.jpg');
+            }
+            .mode-boss { 
+                border-color: #800000; box-shadow: 0 0 15px rgba(128, 0, 0, 0.5);
+                background-image: url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTrirLpKJcQF-dAY1LOSHdFftjwEWciBDb3aTfsEdSiwlGwPkvhDsJMcKse&s=10');
+            }
+            .mode-survival { 
+                border-color: #a600ff; box-shadow: 0 0 15px rgba(166, 0, 255, 0.4);
+                background-image: url('https://images7.alphacoders.com/878/thumb-1920-878515.jpg');
+            }
+
+            /* Currency Footer */
+            .menu-footer {
+                display: flex; gap: 20px;
+                background: rgba(0,0,0,0.8); padding: 10px 30px;
+                border-radius: 50px; border: 1px solid #555;
+                margin-top: 10px;
+            }
+            .currency-item { font-size: 1.1rem; color: #fff; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+
+            /* Particles Canvas */
+            #menu-particles {
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                z-index: 0; pointer-events: none;
+            }
+
+            @keyframes floatTitle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+            @keyframes pulseBorder { 0% { border-color: #ffd700; box-shadow: 0 0 5px gold; } 50% { border-color: #ffaa00; box-shadow: 0 0 20px gold; } 100% { border-color: #ffd700; box-shadow: 0 0 5px gold; } }
+        `;
+        document.head.appendChild(style);
+
+        // 2. RECONSTRUÇÃO DO DOM DO MENU
+        var menuScreen = document.getElementById('menu-screen');
+        var oldContainer = menuScreen.querySelector('.selection-container');
+        
+        // Criar Novo Container
+        var newContainer = document.createElement('div');
+        newContainer.id = 'advanced-menu-container';
+
+        // HTML do Novo Menu
+        newContainer.innerHTML = `
+            <canvas id="menu-particles"></canvas>
+            
+            <div class="menu-logo" data-text="SuperSky">SUPERSKY</div>
+            <div class="menu-version">STORM 3D - ULTIMATE</div>
+
+            <div class="utility-row">
+                <div class="util-btn" onclick="UI.showStory()">
+                    <span>📖</span> História
+                </div>
+                <div class="util-btn" onclick="UI.showScoreScreen()">
+                    <span>🏆</span> Placar
+                </div>
+                <div class="util-btn event-highlight" onclick="window.showEventsScreen ? window.showEventsScreen() : alert('Carregando Eventos...')">
+                    <span>📅</span> Eventos
+                </div>
+            </div>
+
+            <div class="modes-grid">
+                <div class="mode-card mode-normal" onclick="setModeAndPlay('NORMAL')">
+                    <div class="mode-icon">🚀</div>
+                    <div class="mode-title">Normal</div>
+                </div>
+
+                <div class="mode-card mode-frenetic" onclick="setModeAndPlay('FRENETIC')">
+                    <div class="mode-icon">🔥</div>
+                    <div class="mode-title">Frenético</div>
+                </div>
+
+                <div class="mode-card mode-boss" onclick="setModeAndPlay('BOSS_MODE')">
+                    <div class="mode-icon">💀</div>
+                    <div class="mode-title">Boss Rush</div>
+                </div>
+
+                <div class="mode-card mode-survival" onclick="setModeAndPlay('SURVIVAL')">
+                    <div class="mode-icon">☠️</div>
+                    <div class="mode-title">Survival</div>
+                </div>
+            </div>
+
+            <div class="menu-footer">
+                <div class="currency-item">
+                    <span style="color:#ffd700">🪙</span> <span id="menu-total-coins-v9">0</span>
+                </div>
+                <div class="currency-item">
+                    <span style="color:#00eaff">💎</span> <span id="menu-total-gems-v9">0</span>
+                </div>
+            </div>
+        `;
+
+        // Esconde o container antigo e adiciona o novo
+        if(oldContainer) oldContainer.style.display = 'none';
+        menuScreen.appendChild(newContainer);
+
+        // 3. SINCRONIZAR MOEDAS
+        // Como criamos novos elementos para moedas, precisamos garantir que o UI.updateStats atualize eles também
+        var originalUpdateStats = UI.updateStats;
+        UI.updateStats = function() {
+            originalUpdateStats.apply(this);
+            // Atualiza os novos elementos v9
+            var c = document.getElementById('menu-total-coins-v9');
+            var g = document.getElementById('menu-total-gems-v9');
+            if(c) c.innerText = PlayerData.coins;
+            if(g) g.innerText = PlayerData.gems;
+        };
+        UI.updateStats(); // Chamada inicial
+
+        // 4. FUNÇÃO GLOBAL DE SELEÇÃO DE MODO
+        window.setModeAndPlay = function(mode) {
+            if(typeof AudioSys !== 'undefined') AudioSys.sfxClick();
+            
+            if (typeof Game.setMode === 'function') {
+                Game.setMode(mode);
+            } else {
+                Game.activeMode = mode; // Fallback direto
+            }
+            
+            UI.showHeroSelect();
+        };
+
+        // 5. SISTEMA DE PARTÍCULAS DO MENU
+        initMenuParticles();
+    }
+
+    function initMenuParticles() {
+        var canvas = document.getElementById('menu-particles');
+        if(!canvas) return;
+        var ctx = canvas.getContext('2d');
+        
+        var w, h;
+        var particles = [];
+
+        function resize() {
+            w = canvas.width = canvas.parentElement.offsetWidth;
+            h = canvas.height = canvas.parentElement.offsetHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * w;
+                this.y = Math.random() * h;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.size = Math.random() * 2;
+                this.alpha = Math.random();
+                this.color = Math.random() > 0.5 ? '0, 234, 255' : '255, 215, 0'; // Ciano ou Dourado
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if(this.x < 0) this.x = w;
+                if(this.x > w) this.x = 0;
+                if(this.y < 0) this.y = h;
+                if(this.y > h) this.y = 0;
+                this.alpha += (Math.random() - 0.5) * 0.05;
+                if(this.alpha < 0) this.alpha = 0;
+                if(this.alpha > 1) this.alpha = 1;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color}, ${this.alpha})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `rgb(${this.color})`;
+                ctx.fill();
+            }
+        }
+
+        // Criar 50 partículas
+        for(let i=0; i<50; i++) particles.push(new Particle());
+
+        function animate() {
+            ctx.clearRect(0, 0, w, h);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            // Desenhar linhas de conexão
+            particles.forEach((p1, i) => {
+                particles.slice(i + 1).forEach(p2 => {
+                    let dx = p1.x - p2.x;
+                    let dy = p1.y - p2.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist < 100) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 - dist/1000})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+    }
+})();
+</script>
 
 </body>
 </html>
