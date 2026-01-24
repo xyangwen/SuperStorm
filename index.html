@@ -5912,6 +5912,184 @@ window.onload = () => Game.init();
     }
 })();
 </script>
+<script>
+/**
+ * PATCH FINAL: OTIMIZAÇÃO SUPREMA PARA ANDROID (ANTI-LAG)
+ * Instalação: Coloque este script logo antes de </body>
+ * Função: Remove sombras pesadas, otimiza HUD e força GPU.
+ */
+(function() {
+    // Aguarda o carregamento total do jogo e dos patches anteriores
+    var performanceInterval = setInterval(function() {
+        if (typeof Game !== 'undefined' && typeof Game.draw === 'function') {
+            clearInterval(performanceInterval);
+            applyAndroidFixes();
+        }
+    }, 1000);
+
+    function applyAndroidFixes() {
+        console.log("🚀 ATIVANDO MODO TURBO ANDROID (ANTI-LAG)...");
+
+        // 1. CSS PARA FORÇAR GPU E REMOVER EFEITOS PESADOS DO DOM
+        var style = document.createElement('style');
+        style.innerHTML = `
+            * { text-shadow: none !important; box-shadow: none !important; }
+            canvas { transform: translate3d(0,0,0); backface-visibility: hidden; }
+            .floating-currency { text-shadow: 1px 1px 0 #000 !important; }
+            .hud-box, .btn { box-shadow: none !important; border: 1px solid #00eaff !important; }
+            /* Mantém brilho apenas em textos essenciais estáticos */
+            h1, h2 { text-shadow: 2px 2px 0px rgba(0,0,0,0.8) !important; }
+        `;
+        document.head.appendChild(style);
+
+        // 2. OTIMIZAÇÃO DO HUD (Só atualiza se mudar valores)
+        var _originalUpdateHUD = UI.updateHUD;
+        var _lastHUDState = { life: -1, coins: -1, score: -1 };
+        
+        UI.updateHUD = function(life, coins, score) {
+            // Arredonda score para evitar update a cada milissegundo
+            var intScore = Math.floor(score);
+            var intLife = Math.floor(life);
+            
+            if (intLife === _lastHUDState.life && 
+                coins === _lastHUDState.coins && 
+                intScore === _lastHUDState.score) {
+                return; // Não faz nada se não mudou
+            }
+            
+            _lastHUDState = { life: intLife, coins: coins, score: intScore };
+            // Chama o original mas sem sobrecarga
+            document.getElementById('life-fill').style.width = life + '%';
+            document.getElementById('hud-coins').innerText = coins;
+            document.getElementById('hud-score').innerText = intScore;
+        };
+
+        // 3. OVERRIDE DO DRAW (Redesenho sem Sombras/Blur)
+        // O Canvas ShadowBlur é o maior causador de lag em mobile.
+        // Reescrevemos a função draw para remover SOMENTE o blur, mantendo a cor.
+        Game.draw = function() {
+            const bCtx = this.bgCtx;
+            const w = this.bgCanvas.width;
+            const h = this.bgCanvas.height;
+            
+            // Limpeza otimizada
+            bCtx.clearRect(0, 0, w, h);
+            
+            // BG Scrolling (Mantido)
+            if(this.state === 'PLAYING') {
+                this.bgOffset -= this.gameSpeed * 0.2;
+            } else if (this.state === 'BOSS_BATTLE') {
+                this.bgOffset -= 10; 
+            } else {
+                 this.bgOffset -= 0.5;
+            }
+            
+            if (this.bgOffset <= -w) this.bgOffset = 0;
+            
+            if (this.bgImage.complete && this.bgImage.naturalWidth > 0) {
+                bCtx.drawImage(this.bgImage, this.bgOffset, 0, w, h);
+                bCtx.drawImage(this.bgImage, this.bgOffset + w, 0, w, h);
+            } else {
+                bCtx.fillStyle = '#111';
+                bCtx.fillRect(0,0,w,h);
+            }
+            
+            // Darken overlay
+            bCtx.fillStyle = this.state === 'BOSS_BATTLE' ? 'rgba(50,0,0,0.3)' : 'rgba(0,0,0,0.4)';
+            bCtx.fillRect(0,0,w,h);
+    
+            const ctx = this.ctx;
+            ctx.clearRect(0, 0, w, h);
+            
+            if (this.state !== 'PLAYING' && this.state !== 'BOSS_BATTLE' && this.state !== 'PAUSED') return;
+            
+            // REMOVIDO TODO O SHADOWBLUR DAQUI PARA BAIXO
+            ctx.shadowBlur = 0; 
+            ctx.shadowColor = 'transparent';
+
+            // Draw Obstacles
+            this.obstacles.forEach(ob => {
+                // Gradiente simples (mais leve que complexo)
+                ctx.fillStyle = '#333';
+                const topH = ob.y - ob.gap/2;
+                const botY = ob.y + ob.gap/2;
+                
+                ctx.fillRect(ob.x, 0, ob.w, topH);
+                ctx.fillRect(ob.x, botY, ob.w, h - botY);
+                
+                // Faixa neon simplificada (sem glow)
+                ctx.fillStyle = '#00eaff';
+                ctx.fillRect(ob.x, topH - 5, ob.w, 5); 
+                ctx.fillRect(ob.x, botY, ob.w, 5); 
+            });
+            
+            // Draw Items
+            this.items.forEach(it => {
+                ctx.save();
+                ctx.translate(it.x, it.y);
+                ctx.rotate(it.angle); // Rotação é barata, pode manter
+                if (it.type === 'COIN') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15, 0, Math.PI*2);
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fill();
+                    ctx.fillStyle = '#000';
+                    ctx.fillText('$', -3, 4); // Texto simples centralizado
+                } else {
+                    ctx.fillText('❤️', -8, 8);
+                }
+                ctx.restore();
+            });
+            
+            // Draw Particles (Reduzido alpha para performance)
+            this.particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = 0.6; // Menos transparência complexa
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, Math.random()*4, 0, Math.PI*2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+    
+            // Draw Projectiles (Sem Glow)
+            this.projectiles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Rastro simples (Linha sólida é mais leve que sombra)
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x - p.vx*2, p.y);
+                ctx.stroke();
+            });
+        };
+
+        // 4. PARAR LOOP DO MENU AO JOGAR
+        // Isso mata o processamento das partículas do fundo quando o jogo inicia
+        var _origHideAll = UI.hideAll;
+        UI.hideAll = function() {
+            _origHideAll.apply(this);
+            var menuC = document.getElementById('menu-particles');
+            if(menuC) menuC.style.display = 'none'; // Desliga Canvas do Menu
+        };
+
+        var _origShowMenu = UI.showMenu;
+        UI.showMenu = function() {
+            _origShowMenu.apply(this);
+            var menuC = document.getElementById('menu-particles');
+            if(menuC) menuC.style.display = 'block'; // Liga Canvas do Menu
+            
+            // Limpa arrays para liberar RAM
+            Game.particles = []; 
+            Game.projectiles = [];
+        };
+    }
+})();
+</script>
 
 </body>
 </html>
